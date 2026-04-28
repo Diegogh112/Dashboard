@@ -487,14 +487,14 @@ export default function App() {
       try {
         const bstr = evt.target.result;
         const wb = XLSX.read(bstr, { type: 'binary', cellDates: true });
-        
+
         let targetSheetName = wb.SheetNames.find(n => n.includes('Demanda Estratégica') || n.includes('Demanda Estrategica'));
         if (!targetSheetName) throw new Error("No se encontró la hoja Demanda Estratégica");
-        
+
         const sheet = wb.Sheets[targetSheetName];
         let rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
         let headerRowIndex = rows.findIndex(row => row && row.some(cell => typeof cell === 'string' && cell.trim().toUpperCase().includes('PROYECTO')));
-        
+
         if (headerRowIndex !== -1) {
           const rawData = XLSX.utils.sheet_to_json(sheet, { range: headerRowIndex });
           const normalized = rawData.map(item => {
@@ -520,7 +520,7 @@ export default function App() {
             });
             return newItem;
           }).filter(item => item['Nombre del Proyecto']);
-          
+
           setDemand2Data(normalized);
           setLoading(false);
           setActiveTab('demand2');
@@ -746,12 +746,12 @@ export default function App() {
     return demand2Data.filter(item => {
       const matchPortfolio = topPortfolio === 'Todas' || item['Cartera'] === topPortfolio;
       const matchStatus = sidebarFilters.status === 'Todos' || item['Estado Proyecto TI'] === sidebarFilters.status;
-      
+
       let matchChart = true;
       if (demandFilter) {
         matchChart = String(item[demandFilter.key] || '').includes(demandFilter.value);
       }
-      
+
       const projectNameStr = String(item['Nombre del Proyecto'] || item['PROYECTO'] || '').toLowerCase().trim();
       const matchSearch = tableSearch === '' || projectNameStr.includes(tableSearch.toLowerCase());
 
@@ -763,7 +763,7 @@ export default function App() {
         }
         return String(item[key] || '') === String(value);
       });
-      
+
       return matchStatus && matchPortfolio && matchChart && matchSearch && matchColumnFilters;
     });
   }, [demand2Data, sidebarFilters.status, topPortfolio, demandFilter, tableSearch, tableColumnFilters]);
@@ -2689,8 +2689,8 @@ export default function App() {
     );
   };
 
-  
-const renderPortfolioDashboard = () => {
+
+  const renderPortfolioDashboard = () => {
     const stats = calculatePortfolioStats(filteredPortfolio);
 
     // Get unique values for charts
@@ -3267,13 +3267,13 @@ const renderPortfolioDashboard = () => {
   const renderWeeklyDashboard = () => {
     if (!filteredWeekly || filteredWeekly.length === 0) {
       return (
-         <div className="flex flex-col items-center justify-center p-20 bg-white rounded-xl shadow-sm border border-gray-100 mt-20">
-           <FolderOpen className="w-16 h-16 text-gray-200 mb-4" />
-           <p className="text-gray-400 text-lg font-medium">No hay datos en Seguimiento Semanal con los filtros actuales.</p>
-         </div>
+        <div className="flex flex-col items-center justify-center p-20 bg-white rounded-xl shadow-sm border border-gray-100 mt-20">
+          <FolderOpen className="w-16 h-16 text-gray-200 mb-4" />
+          <p className="text-gray-400 text-lg font-medium">No hay datos en Seguimiento Semanal con los filtros actuales.</p>
+        </div>
       );
     }
-  
+
     const totalPendientes = filteredWeekly.filter(w => (w['Estado'] || '').toLowerCase().includes('pendiente') || (w['Estado'] || '').toLowerCase().includes('proceso')).length;
     const totalProyectos = new Set(filteredWeekly.map(w => w['PROYECTO']).filter(Boolean)).size;
     const totalResponsables = new Set(filteredWeekly.map(w => w['Responsable'] || w['LÍDER TÉCNICO']).filter(Boolean)).size;
@@ -3283,8 +3283,8 @@ const renderPortfolioDashboard = () => {
       .map(name => ({
         name: String(name).substring(0, 25) + (String(name).length > 25 ? '...' : ''),
         value: filteredWeekly.filter(w => w['PROYECTO'] === name).length
-      })).sort((a,b) => b.value - a.value).slice(0, 10);
-    
+      })).sort((a, b) => b.value - a.value).slice(0, 10);
+
     const estadosRawData = filteredWeekly.map(w => {
       const raw = (w['Estado'] || '').toLowerCase();
       if (raw.includes('proceso') || raw.includes('curso')) return 'En Proceso';
@@ -3293,12 +3293,12 @@ const renderPortfolioDashboard = () => {
       if (raw.includes('pendiente') || raw.includes('atrasado') || raw.includes('iniciar')) return 'Pendiente';
       return 'Otros';
     });
-    
+
     const estadosMap = estadosRawData.reduce((acc, curr) => {
       acc[curr] = (acc[curr] || 0) + 1;
       return acc;
     }, {});
-    const estadoData = Object.entries(estadosMap).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value);
+    const estadoData = Object.entries(estadosMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 
     const COLORS_MAP = {
       'En Proceso': '#2563eb', // Blue
@@ -3315,8 +3315,8 @@ const renderPortfolioDashboard = () => {
             Seguimiento Semanal Integrado
           </h2>
           <div className="text-sm text-gray-400 bg-white px-3 py-1 rounded-full shadow-sm font-medium border border-gray-100 flex items-center space-x-2">
-             <Layers className="w-4 h-4 text-[#a5000d]" />
-             <span>Visualización de Pendientes</span>
+            <Layers className="w-4 h-4 text-[#a5000d]" />
+            <span>Visualización de Pendientes</span>
           </div>
         </div>
 
@@ -3337,14 +3337,14 @@ const renderPortfolioDashboard = () => {
             <p className="text-4xl font-black text-blue-600">{totalProyectos}</p>
           </div>
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden group">
-             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity text-orange-500">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity text-orange-500">
               <AlertCircle className="w-16 h-16" />
             </div>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Pendientes Totales</p>
             <p className="text-4xl font-black text-orange-500">{totalPendientes}</p>
           </div>
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden group">
-             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity text-green-500">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity text-green-500">
               <Users className="w-16 h-16" />
             </div>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Involucrados / Técnicos</p>
@@ -3354,121 +3354,121 @@ const renderPortfolioDashboard = () => {
 
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-              <h3 className="text-xs font-bold uppercase text-gray-500 mb-6 tracking-widest flex items-center gap-2">
-                 <BarChart2 className="w-4 h-4 text-corporate-dark" />
-                 Top 10 Proyectos por Tareas Asignadas
-              </h3>
-              <div className="h-[300px]">
-                 <ResponsiveContainer width="100%" height="100%">
-                   <BarChart data={proyectosData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
-                     <XAxis type="number" stroke="#9CA3AF" fontSize={11} fontWeight={600} />
-                     <YAxis dataKey="name" type="category" width={140} stroke="#4B5563" fontSize={10} fontWeight={600} />
-                     <Tooltip 
-                       contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                       cursor={{ fill: '#F3F4F6' }}
-                     />
-                     <Bar dataKey="value" fill="#a5000d" radius={[0, 4, 4, 0]} barSize={20} />
-                   </BarChart>
-                 </ResponsiveContainer>
-              </div>
-           </div>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <h3 className="text-xs font-bold uppercase text-gray-500 mb-6 tracking-widest flex items-center gap-2">
+              <BarChart2 className="w-4 h-4 text-corporate-dark" />
+              Top 10 Proyectos por Tareas Asignadas
+            </h3>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={proyectosData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
+                  <XAxis type="number" stroke="#9CA3AF" fontSize={11} fontWeight={600} />
+                  <YAxis dataKey="name" type="category" width={140} stroke="#4B5563" fontSize={10} fontWeight={600} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                    cursor={{ fill: '#F3F4F6' }}
+                  />
+                  <Bar dataKey="value" fill="#a5000d" radius={[0, 4, 4, 0]} barSize={20} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
-           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 relative">
-             <h3 className="text-xs font-bold uppercase text-gray-500 mb-6 tracking-widest flex items-center gap-2">
-                 <PieChartIcon className="w-4 h-4 text-blue-600" />
-                 Distribución de Estados
-             </h3>
-             <div className="h-[300px]">
-                 <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={estadoData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={70}
-                        outerRadius={100}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {estadoData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS_MAP[entry.name] || '#9ca3af'} />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }} 
-                        itemStyle={{ color: '#1f2937' }}
-                      />
-                      <Legend 
-                         wrapperStyle={{ fontSize: '11px', fontWeight: 'bold' }} 
-                         layout="vertical" verticalAlign="middle" align="right" 
-                      />
-                    </PieChart>
-                 </ResponsiveContainer>
-             </div>
-           </div>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 relative">
+            <h3 className="text-xs font-bold uppercase text-gray-500 mb-6 tracking-widest flex items-center gap-2">
+              <PieChartIcon className="w-4 h-4 text-blue-600" />
+              Distribución de Estados
+            </h3>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={estadoData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={70}
+                    outerRadius={100}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {estadoData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS_MAP[entry.name] || '#9ca3af'} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
+                    itemStyle={{ color: '#1f2937' }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: '11px', fontWeight: 'bold' }}
+                    layout="vertical" verticalAlign="middle" align="right"
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
 
         {/* Detail Table */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-             <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2 uppercase tracking-wide">
-               <TableIcon className="w-4 h-4 text-corporate-dark" />
-               Listado General de Seguimiento
-             </h3>
-             <div className="text-xs font-semibold text-gray-400 bg-white px-3 py-1 rounded-md border border-gray-200">
-               {filteredWeekly.length} registros
-             </div>
-           </div>
-           <div className="overflow-x-auto">
-             <table className="w-full text-left text-xs mb-0">
-                <thead className="bg-gray-50/80 text-gray-500 uppercase font-black tracking-wider border-b border-gray-100">
-                  <tr>
-                    <th className="px-6 py-4">Proyecto</th>
-                    <th className="px-6 py-4">Cód. Plant</th>
-                    <th className="px-6 py-4">Pendiente</th>
-                    <th className="px-6 py-4">Responsable / Líder</th>
-                    <th className="px-6 py-4">F. Compromiso</th>
-                    <th className="px-6 py-4">Estado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {filteredWeekly.map((w, i) => {
-                    const excelDate = w['FECHA COMPROMISO'] || w['Fecha Compromiso2'];
-                    let dateStr = 'N/A';
-                    if (excelDate && typeof excelDate === 'number') {
-                       dateStr = new Date((excelDate - 25569) * 86400 * 1000).toLocaleDateString('es-CL');
-                    }
-                    const estado = (w['Estado'] || 'Sin estado');
-                    const isClosed = estado.toLowerCase().includes('cerrado');
-                    return (
-                      <tr key={i} className="hover:bg-gray-50/80 transition-colors">
-                        <td className="px-6 py-4">
-                           <div className="font-bold text-corporate-dark line-clamp-2 max-w-[200px]">{w['PROYECTO']}</div>
-                        </td>
-                        <td className="px-6 py-4 font-mono text-gray-400 text-[10px]">{w['CÓDIGO DE PLANEAMIENTO'] || '-'}</td>
-                        <td className="px-6 py-4">
-                           <div className="text-gray-600 line-clamp-2 max-w-[300px]" title={w['Pendientes']}>{w['Pendientes'] || '-'}</div>
-                        </td>
-                        <td className="px-6 py-4 font-medium text-gray-700">{w['Responsable'] || w['LÍDER TÉCNICO'] || w['LIDER DEL PROYECTO'] || 'Sin asignar'}</td>
-                        <td className="px-6 py-4 text-gray-500 font-semibold">{dateStr}</td>
-                        <td className="px-6 py-4">
-                           <span className={cn(
-                             "px-2.5 py-1 rounded-full text-[10px] font-bold border whitespace-nowrap",
-                             isClosed ? "bg-green-50 text-green-700 border-green-200" 
-                                      : estado.toLowerCase().includes('pendiente') ? "bg-orange-50 text-orange-700 border-orange-200" :
-                                        "bg-blue-50 text-blue-700 border-blue-200"
-                           )}>
-                             {estado}
-                           </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-             </table>
-           </div>
+          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+            <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2 uppercase tracking-wide">
+              <TableIcon className="w-4 h-4 text-corporate-dark" />
+              Listado General de Seguimiento
+            </h3>
+            <div className="text-xs font-semibold text-gray-400 bg-white px-3 py-1 rounded-md border border-gray-200">
+              {filteredWeekly.length} registros
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs mb-0">
+              <thead className="bg-gray-50/80 text-gray-500 uppercase font-black tracking-wider border-b border-gray-100">
+                <tr>
+                  <th className="px-6 py-4">Proyecto</th>
+                  <th className="px-6 py-4">Cód. Plant</th>
+                  <th className="px-6 py-4">Pendiente</th>
+                  <th className="px-6 py-4">Responsable / Líder</th>
+                  <th className="px-6 py-4">F. Compromiso</th>
+                  <th className="px-6 py-4">Estado</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {filteredWeekly.map((w, i) => {
+                  const excelDate = w['FECHA COMPROMISO'] || w['Fecha Compromiso2'];
+                  let dateStr = 'N/A';
+                  if (excelDate && typeof excelDate === 'number') {
+                    dateStr = new Date((excelDate - 25569) * 86400 * 1000).toLocaleDateString('es-CL');
+                  }
+                  const estado = (w['Estado'] || 'Sin estado');
+                  const isClosed = estado.toLowerCase().includes('cerrado');
+                  return (
+                    <tr key={i} className="hover:bg-gray-50/80 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-corporate-dark line-clamp-2 max-w-[200px]">{w['PROYECTO']}</div>
+                      </td>
+                      <td className="px-6 py-4 font-mono text-gray-400 text-[10px]">{w['CÓDIGO DE PLANEAMIENTO'] || '-'}</td>
+                      <td className="px-6 py-4">
+                        <div className="text-gray-600 line-clamp-2 max-w-[300px]" title={w['Pendientes']}>{w['Pendientes'] || '-'}</div>
+                      </td>
+                      <td className="px-6 py-4 font-medium text-gray-700">{w['Responsable'] || w['LÍDER TÉCNICO'] || w['LIDER DEL PROYECTO'] || 'Sin asignar'}</td>
+                      <td className="px-6 py-4 text-gray-500 font-semibold">{dateStr}</td>
+                      <td className="px-6 py-4">
+                        <span className={cn(
+                          "px-2.5 py-1 rounded-full text-[10px] font-bold border whitespace-nowrap",
+                          isClosed ? "bg-green-50 text-green-700 border-green-200"
+                            : estado.toLowerCase().includes('pendiente') ? "bg-orange-50 text-orange-700 border-orange-200" :
+                              "bg-blue-50 text-blue-700 border-blue-200"
+                        )}>
+                          {estado}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
 
       </div>
@@ -3482,7 +3482,7 @@ const renderPortfolioDashboard = () => {
           <div className="bg-corporate-dark/5 p-4 rounded-full inline-block mb-4">
             <Briefcase className="w-12 h-12 text-corporate-dark" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Monitor de Portafolio</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Dashboard de Portafolio</h1>
           <p className="text-gray-500 text-sm mb-6">Cargue el reporte Excel para iniciar la visualización estratégica.</p>
           <input
             type="file"
