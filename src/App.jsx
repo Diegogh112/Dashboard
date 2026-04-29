@@ -177,7 +177,7 @@ const getDemandProjectHealth = (project) => {
       bg = "bg-green-500";
       emoji = "🟢";
     } else if (diff < 0 && diff >= -0.1) {
-      label = "Por vencer";
+      label = "En Riesgo";
       color = "text-amber-600";
       bg = "bg-yellow-400";
       emoji = "🟡";
@@ -257,6 +257,7 @@ export default function App() {
   const [demandFilter, setDemandFilter] = useState(null); // { key: 'Estado TI', value: '...' }
   const [portfolioFilter, setPortfolioFilter] = useState(null);
   const [tableSearch, setTableSearch] = useState('');
+  const [portfolioSearch, setPortfolioSearch] = useState('');
   const [tableColumnFilters, setTableColumnFilters] = useState({});
   const [portfolioColumnFilters, setPortfolioColumnFilters] = useState({});
   const [activeFilterMenu, setActiveFilterMenu] = useState(null); // { key: string, rect: DOMRect, isPortfolio?: boolean }
@@ -371,8 +372,11 @@ export default function App() {
           if (!sheet) return [];
           const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
 
-          // Find header row (the one with "Proyectos Priorizados")
-          const headerIdx = rows.findIndex(r => r && r.some(c => String(c).includes('Proyectos Priorizados')));
+          // Find header row (the one with "Proyectos Priorizados" or "Tipo de Proyecto")
+          const headerIdx = rows.findIndex(r => r && r.some(c => {
+            const s = String(c).toLowerCase();
+            return s.includes('proyectos priorizados') || s.includes('tipo de proyecto');
+          }));
           if (headerIdx === -1) return [];
 
           const headerSub = rows[headerIdx];     // Contains "2023", "Planif", "Ejec"
@@ -387,11 +391,15 @@ export default function App() {
             n: headerSub.findIndex(c => c && String(c).toLowerCase().includes('n°')),
             codigo: headerSub.findIndex(c => c && String(c).toLowerCase().includes('código')),
             proyecto: headerSub.findIndex(c => c && String(c).toLowerCase().includes('proyectos priorizados')),
-            gerencia: headerSub.findIndex(c => c && String(c).toLowerCase().includes('gerencia')),
-            lider: headerSub.findIndex(c => c && String(c).toLowerCase().includes('líder del')),
-            presupuesto: headerSub.findIndex(c => c && String(c).toLowerCase().includes('presupuesto')),
-            dimension: headerSub.findIndex(c => c && String(c).toLowerCase().includes('dimensión')),
-            tipo: headerSub.findIndex(c => c && String(c).toLowerCase().includes('tipo')),
+            gerencia: headerSub.findIndex(c => c && (String(c).toLowerCase().includes('gerencia') || String(c).toLowerCase().includes('líder'))),
+            lider: headerSub.findIndex(c => c && (String(c).toLowerCase().includes('líder del') || String(c).toLowerCase().includes('lider'))),
+            presupuesto: headerSub.findIndex(c => c && (String(c).toLowerCase().includes('presupuesto') || String(c).toLowerCase().includes('costo'))),
+            dimension: headerSub.findIndex(c => c && (String(c).toLowerCase().includes('dimensión') || String(c).toLowerCase().includes('dimension'))),
+            tipo: headerSub.findIndex(c => {
+              if (!c) return false;
+              const val = String(c).toLowerCase();
+              return val.includes('tipo de proyecto') || val.includes('tipo de proy') || val.includes('tipo proyecto') || val === 'tipo';
+            }),
             y2023: headerSub.findIndex(c => c && String(c).includes('2023')),
             estado: headerSub.findIndex(c => c && String(c).toLowerCase().includes('estado de ti')),
             anioInicio: headerSub.findIndex(c => c && String(c).toLowerCase().includes('año inicio')),
@@ -419,7 +427,7 @@ export default function App() {
               'Líder del Proyecto': r[idx('lider', 8)],
               'Presupuesto': parseMoney(r[idx('presupuesto', 9)]),
               'Dimensión': r[idx('dimension', 10)],
-              'Tipo': r[idx('tipo', 11)],
+              'Tipo de Proyecto': r[idx('tipo', 11)],
               '2023': r[idx('y2023', 12)],
               'Año Inicio Planificado': r[idx('anioInicio', 5)],
               'Año Fin Planificado': r[idx('anioFin', 6)],
@@ -455,7 +463,11 @@ export default function App() {
           });
         };
 
-        const trendSheetName = findSheet(wb, ['pys', 'transf', 'digital']) || findSheet(wb, ['tendencia']) || (wb.SheetNames.length > 3 ? wb.SheetNames[3] : wb.SheetNames[wb.SheetNames.length - 1]);
+        const trendSheetName = 
+          wb.SheetNames.find(n => n.toLowerCase().includes('pys transf digital')) ||
+          findSheet(wb, ['pys', 'transf', 'digital']) || 
+          findSheet(wb, ['tendencia']) || 
+          (wb.SheetNames.length > 3 ? wb.SheetNames[3] : wb.SheetNames[wb.SheetNames.length - 1]);
 
         const sheets = {
           portfolio: normalizeData(processSheet(wb.Sheets['Portafolio P&D'] || wb.Sheets[wb.SheetNames[0]])),
@@ -565,6 +577,7 @@ export default function App() {
       }
 
       const projectNameStr = String(item['Nombre del Proyecto'] || '').toLowerCase().trim();
+      const matchSearch = portfolioSearch === '' || projectNameStr.includes(portfolioSearch.toLowerCase());
       const isPrioritized = prioritizedProjectNames.has(projectNameStr);
 
       const matchColumnFilters = Object.entries(portfolioColumnFilters).every(([key, value]) => {
@@ -572,12 +585,19 @@ export default function App() {
         if (key === 'Priorizado') {
           return value === 'Sí' ? isPrioritized : !isPrioritized;
         }
+        if (key === 'Salud') {
+          const healthLabel = getHealthColor(item).includes('bg-green') ? 'Excelente' : getHealthColor(item).includes('bg-yellow') ? 'En Riesgo' : 'Retraso';
+          return healthLabel === value;
+        }
+        if (key === 'Nombre del Proyecto') {
+          return String(item['Nombre del Proyecto'] || '').toLowerCase().includes(String(value).toLowerCase());
+        }
         return String(item[key] || '') === String(value);
       });
 
-      return matchStatus && matchPortfolio && matchChart && matchColumnFilters;
+      return matchStatus && matchPortfolio && matchChart && matchSearch && matchColumnFilters;
     });
-  }, [data, sidebarFilters, topPortfolio, portfolioColumnFilters, portfolioFilter]);
+  }, [data, sidebarFilters, topPortfolio, portfolioColumnFilters, portfolioFilter, portfolioSearch]);
 
   const filteredDemand = useMemo(() => {
     if (!data?.demand) return [];
@@ -804,11 +824,23 @@ export default function App() {
     });
 
     const total = filteredTrend.length;
+    const typeCounts = {};
     filteredTrend.forEach(t => {
       const s = t['Estado'] || 'Sin Estado';
       counts[s] = (counts[s] || 0) + 1;
+      
+      let type = t['Tipo de Proyecto'];
+      // Normalize type according to user requirements and image
+      if (type === "0" || type === 0) {
+        type = "Otros (0)"; // As requested: "Los que tienen como tipo de proyecto '0', consideralo como 'Otros'"
+      } else if (!type || String(type).trim() === "" || String(type).toLowerCase() === "null") {
+        type = "Por asignar"; // As seen in image for unassigned/empty
+      } else {
+        type = String(type).trim();
+      }
+      typeCounts[type] = (typeCounts[type] || 0) + 1;
     });
-    return { total, counts };
+    return { total, counts, typeCounts };
   }, [data?.trend, selectedProjectName, trendFilter, sidebarFilters.management, sidebarFilters.dimension, topPortfolio]);
 
   const trendByYear = useMemo(() => {
@@ -846,6 +878,8 @@ export default function App() {
               );
               return prioritizedProjectNames.has(String(item['Nombre del Proyecto'] || '').toLowerCase().trim()) ? 'Sí' : 'No';
             }
+            if (key === 'Salud') return getHealthColor(item).includes('bg-green') ? 'Excelente' : getHealthColor(item).includes('bg-yellow') ? 'En Riesgo' : 'Retraso';
+            if (key === 'Nombre del Proyecto') return item['Nombre del Proyecto'];
           }
           return item[key];
         })
@@ -1336,7 +1370,7 @@ export default function App() {
           <div className="bg-white p-4 border border-gray-200 rounded shadow-sm relative">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-[10px] font-bold uppercase text-gray-500 tracking-widest">
-                Distribución por Gerencia
+                Tipo de Requerimiento por Gerencia
               </h3>
               <div className="flex items-center space-x-4">
                 <div className="bg-gray-100 px-2 py-0.5 rounded text-[9px] font-bold text-gray-500">
@@ -2266,7 +2300,7 @@ export default function App() {
           <div className="bg-white p-4 border border-gray-200 rounded shadow-sm relative">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-[10px] font-bold uppercase text-gray-500 tracking-widest">
-                Distribución por Gerencia
+                Tipo de Requerimiento por Gerencia
               </h3>
               <div className="flex items-center space-x-4">
                 <div className="bg-gray-100 px-2 py-0.5 rounded text-[9px] font-bold text-gray-500">
@@ -2700,11 +2734,22 @@ export default function App() {
         value: filteredPortfolio.filter(p => p['Gerencia Líder'] === mgmt).length
       }));
 
-    const statusData = Array.from(new Set(filteredPortfolio.map(p => p['Estado TI'] || 'Sin Estado')))
-      .map(status => ({
-        name: status,
-        value: filteredPortfolio.filter(p => (p['Estado TI'] || 'Sin Estado') === status).length
-      }));
+    const avgProgressData = [
+      {
+        name: 'Planificado',
+        value: filteredPortfolio.length > 0
+          ? parseFloat(((filteredPortfolio.reduce((acc, p) => acc + (parseFloat(p['% Avance Planificado']) || 0), 0) / filteredPortfolio.length) * 100).toFixed(1))
+          : 0,
+        fill: '#1e3a5f'
+      },
+      {
+        name: 'Ejecutado',
+        value: filteredPortfolio.length > 0
+          ? parseFloat(((filteredPortfolio.reduce((acc, p) => acc + (parseFloat(p['% Avance ejecutado']) || 0), 0) / filteredPortfolio.length) * 100).toFixed(1))
+          : 0,
+        fill: '#a5000d'
+      }
+    ];
 
     return (
       <div className="space-y-6">
@@ -2746,7 +2791,7 @@ export default function App() {
                 value={
                   <div className="flex items-center justify-center gap-2">
                     <div className={cn("w-3 h-3 rounded-full", getHealthColor(selectedProject))} />
-                    <span className="font-bold uppercase text-[10px]">{getHealthColor(selectedProject).includes('bg-green') ? 'Saludable' : getHealthColor(selectedProject).includes('bg-yellow') ? 'En Riesgo' : 'Crítico'}</span>
+                    <span className="font-bold uppercase text-[10px]">{getHealthColor(selectedProject).includes('bg-green') ? 'Excelente' : getHealthColor(selectedProject).includes('bg-yellow') ? 'En Riesgo' : 'Retraso'}</span>
                   </div>
                 }
               />
@@ -2794,32 +2839,70 @@ export default function App() {
           </div>
         ) : (
           <>
-            {portfolioFilter && (
               <div className="flex flex-wrap items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded shadow-sm animate-in fade-in slide-in-from-top-2 duration-300 md:col-span-full mb-4">
                 <Filter className="w-4 h-4 text-blue-600 shrink-0" />
-                <div className="flex items-center bg-white border border-blue-100 rounded-full px-2 py-0.5 text-[10px] font-bold text-blue-800 shadow-sm">
-                  <span className="text-blue-400 mr-1 uppercase">{portfolioFilter.key}:</span>
-                  <span className="uppercase">{portfolioFilter.value}</span>
-                  <button onClick={() => setPortfolioFilter(null)} className="ml-1 hover:text-red-500">
-                    <X className="w-3 h-3" />
+                {portfolioFilter && (
+                  <div className="flex items-center bg-white border border-blue-100 rounded-full px-2 py-0.5 text-[10px] font-bold text-blue-800 shadow-sm">
+                    <span className="text-blue-400 mr-1 uppercase">{portfolioFilter.key}:</span>
+                    <span className="uppercase">{portfolioFilter.value}</span>
+                    <button onClick={() => setPortfolioFilter(null)} className="ml-1 hover:text-red-500">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+                
+                {Object.entries(portfolioColumnFilters).map(([key, value]) => {
+                  if (!value || value === 'Todos') return null;
+                  return (
+                    <div key={key} className="flex items-center bg-white border border-blue-100 rounded-full px-2 py-0.5 text-[10px] font-bold text-blue-800 shadow-sm">
+                      <span className="text-blue-400 mr-1 uppercase">{key}:</span>
+                      <span className="uppercase">{value}</span>
+                      <button 
+                        onClick={() => setPortfolioColumnFilters(prev => {
+                          const next = { ...prev };
+                          delete next[key];
+                          return next;
+                        })} 
+                        className="ml-1 hover:text-red-500"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {portfolioSearch && (
+                  <div className="flex items-center bg-white border border-blue-100 rounded-full px-2 py-0.5 text-[10px] font-bold text-blue-800 shadow-sm">
+                    <span className="text-blue-400 mr-1 uppercase">Búsqueda:</span>
+                    <span className="uppercase">{portfolioSearch}</span>
+                    <button onClick={() => setPortfolioSearch('')} className="ml-1 hover:text-red-500">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+
+                {(portfolioFilter || portfolioSearch || Object.values(portfolioColumnFilters).some(v => v && v !== 'Todos')) && (
+                  <button
+                    onClick={() => {
+                      setPortfolioFilter(null);
+                      setPortfolioSearch('');
+                      setPortfolioColumnFilters({});
+                    }}
+                    className="text-[10px] font-bold text-blue-600 hover:text-blue-800 underline ml-2"
+                  >
+                    Limpiar todo
                   </button>
-                </div>
-                <button
-                  onClick={() => setPortfolioFilter(null)}
-                  className="text-[10px] font-bold text-blue-600 hover:text-blue-800 underline ml-2"
-                >
-                  Limpiar filtro
-                </button>
+                )}
               </div>
             )}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              <KPICard label="Total Proyectos" value={stats.total} />
-              <KPICard label="En Curso" value={stats.enEjecucion} colorClass="text-blue-600" />
-              <KPICard label="Implementado" value={stats.implementado} colorClass="text-green-600" />
-              <KPICard label="No Iniciado" value={stats.noIniciado} colorClass="text-gray-500" />
-              <KPICard label="Presupuesto" value={formatCurrency(stats.budget)} colorClass="text-corporate-dark" />
-              <KPICard label="Avance Promedio" value={formatPercent(stats.avgExec)} />
-            </div>
+            <KPICard label="Total Proyectos" value={stats.total} />
+            <KPICard label="En Curso" value={stats.enEjecucion} colorClass="text-blue-600" />
+            <KPICard label="Implementado" value={stats.implementado} colorClass="text-green-600" />
+            <KPICard label="No Iniciado" value={stats.noIniciado} colorClass="text-gray-500" />
+            <KPICard label="Cerrado" value={stats.cerrado} colorClass="text-purple-600" />
+            <KPICard label="Descartado" value={stats.descartado} colorClass="text-red-600" />
+          </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white p-6 border border-gray-200 rounded shadow-sm relative">
@@ -2853,144 +2936,165 @@ export default function App() {
               </div>
               <div className="bg-white p-6 border border-gray-200 rounded shadow-sm relative">
                 <div className="absolute top-4 right-4 bg-gray-100 px-2 py-0.5 rounded text-[9px] font-bold text-gray-500">
-                  TOTAL: {filteredPortfolio.length}
+                  TOTAL: {filteredPortfolio.length} PROYECTOS
                 </div>
-                <h3 className="text-xs font-bold uppercase text-gray-500 mb-6 tracking-widest">Estado de TI</h3>
+                <h3 className="text-xs font-bold uppercase text-gray-500 mb-6 tracking-widest">Promedio de Avance (Plan vs Real)</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={statusData}
-                        innerRadius={60}
-                        outerRadius={80}
-                        dataKey="value"
-                        nameKey="name"
-                        label
-                        onClick={(data) => {
-                          if (portfolioFilter?.value === data.name) {
-                            setPortfolioFilter(null);
-                          } else {
-                            setPortfolioFilter({ key: 'Estado TI', value: data.name });
-                          }
-                        }}
-                        className="cursor-pointer"
-                      >
-                        {statusData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip />
-                      <Legend />
-                    </PieChart>
+                    <BarChart data={avgProgressData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                      <XAxis dataKey="name" fontSize={10} />
+                      <YAxis domain={[0, 100]} fontSize={10} unit="%" />
+                      <Tooltip 
+                        cursor={{ fill: '#f8fafc' }}
+                        formatter={(value) => [`${value}%`, 'Avance Promedio']} 
+                      />
+                      <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={60} />
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded shadow-sm overflow-hidden">
-              <div className="bg-gray-50 px-6 py-3 border-b border-gray-200 flex justify-between items-center">
-                <h3 className="text-xs font-bold uppercase text-gray-600 tracking-wider">Portafolio P&D - Vista Planeamiento</h3>
-                <span className="text-[10px] bg-gray-200 px-2 py-0.5 rounded text-gray-600 font-bold">{filteredPortfolio.length} proyectos</span>
+          <div className="bg-white border border-gray-200 rounded shadow-sm overflow-hidden">
+            <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-[10px] font-bold uppercase text-gray-600 tracking-wider">Portafolio P&D - Vista Planeamiento</h3>
+                <span className="text-[9px] bg-gray-200 px-2 py-0.5 rounded text-gray-600 font-bold w-fit">{filteredPortfolio.length} proyectos</span>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="bg-gray-100 text-gray-500 font-bold uppercase border-b border-gray-200">
-                      <th className="px-6 py-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <span>Proyecto</span>
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={(e) => handleFilterClick('Priorizado', e, true)}
-                              className={cn(
-                                "p-1 hover:bg-gray-200 rounded transition-colors",
-                                portfolioColumnFilters['Priorizado'] ? "text-blue-600" : "text-gray-400"
-                              )}
-                              title="Filtrar por Priorizado"
-                            >
-                              <Star className={cn("w-3 h-3", portfolioColumnFilters['Priorizado'] ? "fill-blue-600" : "")} />
-                            </button>
-                            <button
-                              onClick={(e) => handleFilterClick('Nombre del Proyecto', e, true)}
-                              className={cn(
-                                "p-1 hover:bg-gray-200 rounded transition-colors",
-                                portfolioColumnFilters['Nombre del Proyecto'] ? "text-blue-600" : "text-gray-400"
-                              )}
-                            >
-                              <ChevronDown className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                      </th>
-                      <th className="px-6 py-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <span>Gerencia</span>
-                          <button
-                            onClick={(e) => handleFilterClick('Gerencia Líder', e, true)}
-                            className={cn(
-                              "p-1 hover:bg-gray-200 rounded transition-colors",
-                              portfolioColumnFilters['Gerencia Líder'] ? "text-blue-600" : "text-gray-400"
-                            )}
-                          >
-                            <ChevronDown className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </th>
-                      <th className="px-6 py-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <span>Estado TI</span>
-                          <button
-                            onClick={(e) => handleFilterClick('Estado TI', e, true)}
-                            className={cn(
-                              "p-1 hover:bg-gray-200 rounded transition-colors",
-                              portfolioColumnFilters['Estado TI'] ? "text-blue-600" : "text-gray-400"
-                            )}
-                          >
-                            <ChevronDown className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </th>
-                      <th className="px-6 py-3">Avance Real</th>
-                      <th className="px-6 py-3 text-center">Salud</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {(() => {
-                      const prioritizedProjectNames = new Set(
-                        (data?.trend || []).map(t => String(t['Proyecto'] || '').toLowerCase().trim())
-                      );
 
-                      return filteredPortfolio.map((p, i) => {
-                        const isPrioritized = prioritizedProjectNames.has(String(p['Nombre del Proyecto'] || '').toLowerCase().trim());
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar proyecto..."
+                    className="pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded w-64 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    value={portfolioSearch}
+                    onChange={(e) => setPortfolioSearch(e.target.value)}
+                  />
+                </div>
 
-                        return (
-                          <tr key={i} className={cn(
-                            "hover:bg-gray-50 cursor-pointer transition-colors",
-                            isPrioritized ? "bg-amber-50/50" : ""
-                          )} onClick={() => setSelectedProjectName(p['Nombre del Proyecto'])}>
-                            <td className="px-6 py-3">
-                              <div className="flex items-center gap-2">
-                                {isPrioritized && <Star className="w-3 h-3 fill-amber-400 text-amber-400 shrink-0" />}
-                                <span className={cn(
-                                  "font-semibold",
-                                  isPrioritized ? "text-amber-900" : "text-gray-800"
-                                )}>{p['Nombre del Proyecto']}</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-3 text-gray-500">{p['Gerencia Líder']}</td>
-                            <td className="px-6 py-3">
-                              <span className="px-2 py-1 bg-gray-100 rounded text-[10px] font-bold uppercase">{p['Estado TI'] || p['Estado de TI'] || 'Sin Estado'}</span>
-                            </td>
-                            <td className="px-6 py-3 font-bold text-corporate-dark">{formatPercent(p['% Avance ejecutado'])}</td>
-                            <td className="px-6 py-3">
-                              <div className={cn("w-3 h-3 rounded-full mx-auto shadow-sm", getHealthColor(p))} />
-                            </td>
-                          </tr>
-                        );
-                      });
-                    })()}
-                  </tbody>
-                </table>
+                <select
+                  className="text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  value={portfolioColumnFilters['Priorizado'] || 'Todos'}
+                  onChange={(e) => setPortfolioColumnFilters(prev => ({ ...prev, 'Priorizado': e.target.value }))}
+                >
+                  <option value="Todos">Todos</option>
+                  <option value="Sí">Priorizados</option>
+                  <option value="No">No Priorizados</option>
+                </select>
               </div>
             </div>
+            <div className="overflow-x-auto relative">
+              <table className="w-full text-left text-[11px] table-fixed">
+                <thead>
+                  <tr className="bg-gray-100 text-gray-500 font-bold uppercase border-b border-gray-200">
+                    <th className="px-4 py-3 w-64 group relative">
+                      <div className="flex items-center justify-between">
+                        <span>Proyecto</span>
+                        <button onClick={(e) => handleFilterClick('Nombre del Proyecto', e, true)} className={cn(
+                          "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                          portfolioColumnFilters['Nombre del Proyecto'] ? "text-blue-600" : "text-gray-400"
+                        )}>
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </th>
+                    <th className="px-4 py-3 w-40 group relative">
+                      <div className="flex items-center justify-between">
+                        <span>Gerencia Líder</span>
+                        <button onClick={(e) => handleFilterClick('Gerencia Líder', e, true)} className={cn(
+                          "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                          portfolioColumnFilters['Gerencia Líder'] ? "text-blue-600" : "text-gray-400"
+                        )}>
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </th>
+                    <th className="px-4 py-3 w-32 group relative">
+                      <div className="flex items-center justify-between">
+                        <span>Estado</span>
+                        <button onClick={(e) => handleFilterClick('Estado', e, true)} className={cn(
+                          "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                          portfolioColumnFilters['Estado'] ? "text-blue-600" : "text-gray-400"
+                        )}>
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </th>
+                    <th className="px-4 py-3 w-28 group relative">
+                      <div className="flex items-center justify-between">
+                        <span>Salud</span>
+                        <button onClick={(e) => handleFilterClick('Salud', e, true)} className={cn(
+                          "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                          portfolioColumnFilters['Salud'] ? "text-blue-600" : "text-gray-400"
+                        )}>
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </th>
+                    <th className="px-4 py-3 w-32 text-center">Avance P/R</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {(() => {
+                    const prioritizedProjectNames = new Set(
+                      (data?.trend || []).map(t => String(t['Proyecto'] || '').toLowerCase().trim())
+                    );
+
+                    return filteredPortfolio.map((p, i) => {
+                      const isPrioritized = prioritizedProjectNames.has(String(p['Nombre del Proyecto'] || '').toLowerCase().trim());
+                      const projectHealthLabel = getHealthColor(p).includes('bg-green') ? 'Excelente' : getHealthColor(p).includes('bg-yellow') ? 'En Riesgo' : 'Retraso';
+                      const projectHealthEmoji = getHealthColor(p).includes('bg-green') ? '🟢' : getHealthColor(p).includes('bg-yellow') ? '🟡' : '🔴';
+                      const projectHealthColor = getHealthColor(p).includes('bg-green') ? 'text-green-600' : getHealthColor(p).includes('bg-yellow') ? 'text-amber-600' : 'text-red-600';
+
+                      return (
+                        <tr key={i} className={cn(
+                          "hover:bg-gray-50 transition-colors cursor-pointer border-l-4",
+                          isPrioritized ? "bg-amber-50/70 border-l-amber-400" : "border-l-transparent"
+                        )}
+                          onClick={() => setSelectedProjectName(p['Nombre del Proyecto'])}
+                        >
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              {isPrioritized && <Star className="w-3 h-3 fill-amber-400 text-amber-400 shrink-0" />}
+                              <div className={cn(
+                                "font-bold leading-tight line-clamp-2",
+                                isPrioritized ? "text-amber-900" : "text-gray-800"
+                              )}>
+                                {p['Nombre del Proyecto']}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 truncate">{p['Gerencia Líder']}</td>
+                          <td className="px-4 py-3">
+                            <div className="max-w-fit">
+                              <span className={cn(
+                                "px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border block truncate",
+                                (p['Estado'] || '').toLowerCase().includes('finalizado') || (p['Estado'] || '').toLowerCase().includes('cerrado') ? "bg-green-50 text-green-700 border-green-100" :
+                                  (p['Estado'] || '').toLowerCase().includes('desarrollo') || (p['Estado'] || '').toLowerCase().includes('ejecución') || (p['Estado'] || '').toLowerCase().includes('curso') ? "bg-blue-50 text-blue-700 border-blue-100" : "bg-gray-50 text-gray-600 border-gray-100"
+                              )} title={p['Estado']}>{p['Estado'] || 'Sin Estado'}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className={cn(
+                              "font-bold text-[9px]",
+                              projectHealthColor
+                            )}>{projectHealthEmoji} {projectHealthLabel}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center whitespace-nowrap">
+                            <div className="font-bold text-gray-700">{formatPercent(p['% Avance Planificado'])}</div>
+                            <div className="text-blue-600 font-bold">{formatPercent(p['% Avance ejecutado'])}</div>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
           </>
         )}
       </div>
@@ -3092,14 +3196,14 @@ export default function App() {
 
           <div className="bg-white p-6 border border-gray-200 rounded shadow-sm">
             <h3 className="text-xs font-bold uppercase text-gray-500 mb-6 tracking-widest flex items-center">
-              Proyectos por Estado de TI
+              Proyectos por Tipo
             </h3>
             <div className="h-[400px]">
-              {Object.keys(trendStats.counts).length > 0 ? (
+              {Object.keys(trendStats.typeCounts || {}).length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={Object.entries(trendStats.counts).map(([name, value]) => ({ name, value }))}
+                      data={Object.entries(trendStats.typeCounts).map(([name, value]) => ({ name, value }))}
                       cx="50%"
                       cy="50%"
                       innerRadius={60}
@@ -3108,7 +3212,7 @@ export default function App() {
                       dataKey="value"
                       label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
                     >
-                      {Object.keys(trendStats.counts).map((entry, index) => (
+                      {Object.keys(trendStats.typeCounts).map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
