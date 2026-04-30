@@ -516,6 +516,13 @@ export default function App() {
           if (key === 'Nombre del Proyecto') return item['Nombre del Proyecto'] || item['PROYECTO'];
         }
         
+        // For weekly Responsable: split "Juan / Pedro" into individual names
+        if (isWeekly && key === 'Responsable') {
+          const raw = item['Responsable'] || item['LÍDER TÉCNICO'] || item['LIDER DEL PROYECTO'] || '';
+          const names = String(raw).split('/').map(n => n.trim()).filter(n => n && n !== '-');
+          return names.length > 0 ? names : ['Sin asignar'];
+        }
+
         const val = item[key];
         const strVal = String(val || '').trim();
         if (strVal === '' || strVal === '-' || strVal === '0') {
@@ -523,6 +530,7 @@ export default function App() {
         }
         return val;
       })
+      .flat()
       .filter(v => v !== null && v !== undefined && v !== '');
     return Array.from(new Set(values)).sort();
   };
@@ -776,18 +784,26 @@ export default function App() {
         const bstr = evt.target.result;
         const wb = XLSX.read(bstr, { type: 'binary', cellDates: false });
 
-        let targetSheetName = wb.SheetNames.find(n =>
-          n.includes('Demanda Estrat') || n.toLowerCase().includes('demanda estrat')
+        // Find the sheet
+        let sheetName = wb.SheetNames.find(n =>
+          n.toLowerCase().includes('demanda estrat')
         );
-        if (!targetSheetName) throw new Error("No se encontro la hoja 'Demanda Estrategica'");
+        if (!sheetName) sheetName = wb.SheetNames[0];
 
-        const sheet = wb.Sheets[targetSheetName];
+        const sheet = wb.Sheets[sheetName];
+        // Get raw rows as arrays
         const allRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
 
-        // Convert Excel serial date -> JS Date
+        // ── Helpers ──────────────────────────────────────────────────────────
         const toDate = (v) => {
-          if (!v || typeof v !== 'number') return null;
-          return new Date((v - 25569) * 86400 * 1000);
+          if (!v) return null;
+          if (v instanceof Date) return v;
+          if (typeof v === 'number' && v > 1000) return new Date((v - 25569) * 86400 * 1000);
+          if (typeof v === 'string') {
+            const d = new Date(v);
+            return isNaN(d.getTime()) ? null : d;
+          }
+          return null;
         };
         const toDateStr = (v) => {
           const d = toDate(v);
@@ -796,163 +812,141 @@ export default function App() {
         };
         const toNum = (v) => {
           if (v === null || v === undefined) return null;
-          const n = typeof v === 'number' ? v : parseFloat(v);
+          const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
           return isNaN(n) ? null : n;
         };
+        const cellStr = (v) => (v !== null && v !== undefined ? String(v).trim() : '');
 
-        // ── Find the second table header (has % Planificado + Fecha Inicio) ──
-        // This is the main table we care about (starts around row 28 in the Excel)
         const MONTH_MAP = { ene:0,feb:1,mar:2,abr:3,may:4,jun:5,jul:6,ago:7,sep:8,oct:9,nov:10,dic:11 };
 
+        // ── Step 1: Find the second table (avances + cronograma) ──────────────
+        // Strategy: scan ALL rows, find the one that has the most "useful" columns
+        // (has a project name column + % columns + date columns)
+        // The second table typically starts around row 27-30 (0-indexed)
+
+        // First, find any row that has BOTH a date-like column AND a % column
+        // AND a text column that looks like a project name
         let table2HeaderIdx = -1;
-        for (let r = 0; r < allRows.length; r++) {
+
+        for (let r = 5; r < Math.min(allRows.length, 60); r++) {
           const row = allRows[r];
           if (!row) continue;
-          const cells = row.map(c => String(c || '').toLowerCase().trim());
-          const hasPlan = cells.some(c => c.includes('planificado') || c === '%');
-          const hasFecha = cells.some(c => c.includes('fecha') && (c.includes('inicio') || c.includes('fin')));
-          const hasProyecto = cells.some(c => c.includes('proyecto') || c === 'proyecto');
-          if (hasPlan && hasFecha && hasProyecto) {
+          const cells = row.map(c => cellStr(c).toLowerCase());
+          const hasPct = cells.some(c => c === '%' || c.includes('planificado') || c.includes('avance'));
+          const hasFecha = cells.some(c => c.includes('fecha') || c.includes('inicio') || c.includes('fin'));
+          const hasProj = cells.some(c => c.includes('proyecto') || c === 'proyecto');
+          if (hasPct && hasFecha && hasProj) {
             table2HeaderIdx = r;
             break;
           }
         }
 
+        // Fallback: find row with "%" and "Fecha"
         if (table2HeaderIdx === -1) {
-          // Fallback: find any row with both "%" and "Fecha"
-          for (let r = 0; r < allRows.length; r++) {
+          for (let r = 5; r < Math.min(allRows.length, 60); r++) {
             const row = allRows[r];
             if (!row) continue;
-            const cells = row.map(c => String(c || '').toLowerCase().trim());
-            const hasPct = cells.some(c => c === '%' || c.includes('planificado'));
-            const hasFecha = cells.some(c => c.includes('fecha'));
-            if (hasPct && hasFecha) { table2HeaderIdx = r; break; }
+            const cells = row.map(c => cellStr(c).toLowerCase());
+            if (cells.some(c => c === '%' || c.includes('planificado')) && cells.some(c => c.includes('fecha'))) {
+              table2HeaderIdx = r;
+              break;
+            }
           }
         }
 
-        if (table2HeaderIdx === -1) throw new Error("No se encontro la tabla de avances en la hoja");
+        if (table2HeaderIdx === -1) {
+          // Last resort: use row 27 (common position in these files)
+          table2HeaderIdx = Math.min(27, allRows.length - 2);
+        }
 
-        // ── Detect Gantt month columns ────────────────────────────────────────
-        // Look in the rows ABOVE table2HeaderIdx for year/month headers
-        // The Excel has: row N-2 = years (merged), row N-1 = month names, row N = data headers
-        // OR: row N-1 = years, row N = month names (right above data header)
-        // We scan up to 4 rows above to find month names
+        // ── Step 2: Detect Gantt month columns ────────────────────────────────
+        // Look in rows ABOVE table2HeaderIdx for month/year headers
+        // The Excel typically has: yearRow (merged) then monthRow then dataHeader
+        let ganttCols = [];
 
-        let ganttCols = []; // { colIdx, year, month (0-based), label }
-
-        const scanForGanttHeaders = (monthRowIdx, yearRowIdx) => {
+        const tryBuildGanttCols = (monthRowIdx, yearRowIdx) => {
+          if (monthRowIdx < 0 || monthRowIdx >= allRows.length) return [];
           const monthRow = allRows[monthRowIdx] || [];
-          const yearRow = yearRowIdx >= 0 ? (allRows[yearRowIdx] || []) : [];
+          const yearRow  = yearRowIdx >= 0 && yearRowIdx < allRows.length ? (allRows[yearRowIdx] || []) : [];
           const cols = [];
-          let currentYear = null;
+          let curYear = null;
 
           for (let c = 0; c < monthRow.length; c++) {
-            // Carry forward year from merged cells
-            const yrVal = yearRow[c];
-            if (yrVal !== null && yrVal !== undefined) {
-              const yr = parseInt(String(yrVal));
-              if (!isNaN(yr) && yr >= 2020 && yr <= 2035) currentYear = yr;
+            // Pick up year from year row (carry forward for merged cells)
+            const yrCell = yearRow[c];
+            if (yrCell !== null && yrCell !== undefined) {
+              const yr = parseInt(String(yrCell));
+              if (!isNaN(yr) && yr >= 2020 && yr <= 2040) curYear = yr;
             }
-            // Also check if the month cell itself contains a year (e.g. "Ene-26")
-            const mVal = monthRow[c];
-            if (!mVal) continue;
-            const mStr = String(mVal).trim().toLowerCase();
-            // Try "Ene-26" or "Ene 2026" format
-            const yearInMonth = mStr.match(/(\d{2,4})$/);
-            if (yearInMonth) {
-              const yr2 = parseInt(yearInMonth[1]);
-              if (!isNaN(yr2)) {
-                currentYear = yr2 < 100 ? 2000 + yr2 : yr2;
-              }
+            const mCell = monthRow[c];
+            if (!mCell) continue;
+            const mStr = cellStr(mCell).toLowerCase();
+            // Handle "Ene-26", "Ene 2026", "ENE", "enero", etc.
+            const yearSuffix = mStr.match(/[^a-z](\d{2,4})$/);
+            if (yearSuffix) {
+              const yr2 = parseInt(yearSuffix[1]);
+              if (!isNaN(yr2)) curYear = yr2 < 100 ? 2000 + yr2 : yr2;
             }
-            const monthKey = mStr.substring(0, 3);
-            if (MONTH_MAP[monthKey] !== undefined && currentYear) {
-              cols.push({ colIdx: c, year: currentYear, month: MONTH_MAP[monthKey], label: String(mVal).trim() });
+            const mk = mStr.replace(/[^a-z]/g, '').substring(0, 3);
+            if (MONTH_MAP[mk] !== undefined && curYear) {
+              cols.push({ colIdx: c, year: curYear, month: MONTH_MAP[mk], label: cellStr(mCell) });
             }
           }
           return cols;
         };
 
-        // Try different row combinations above table2HeaderIdx
-        for (let offset = 1; offset <= 4 && ganttCols.length === 0; offset++) {
-          const mRowIdx = table2HeaderIdx - offset;
-          if (mRowIdx < 0) break;
-          // Try with year row one more above
-          const yRowIdx = mRowIdx - 1;
-          ganttCols = scanForGanttHeaders(mRowIdx, yRowIdx >= 0 ? yRowIdx : -1);
-          if (ganttCols.length === 0) {
-            // Try same row as month (year embedded in month label)
-            ganttCols = scanForGanttHeaders(mRowIdx, -1);
-          }
+        // Try combinations: month row at offset -1, -2, -3 from header; year row one above that
+        for (let mOff = 1; mOff <= 4 && ganttCols.length === 0; mOff++) {
+          const mRow = table2HeaderIdx - mOff;
+          ganttCols = tryBuildGanttCols(mRow, mRow - 1);
+          if (ganttCols.length === 0) ganttCols = tryBuildGanttCols(mRow, -1);
         }
 
-        // If still no gantt cols, try scanning the header row itself for month-like columns
-        if (ganttCols.length === 0) {
-          const hRow = allRows[table2HeaderIdx] || [];
-          let currentYear = new Date().getFullYear();
-          for (let c = 0; c < hRow.length; c++) {
-            const v = hRow[c];
-            if (!v) continue;
-            const s = String(v).trim().toLowerCase();
-            const yr = parseInt(s.match(/\d{4}/)?.[0] || '');
-            if (!isNaN(yr) && yr >= 2020 && yr <= 2035) currentYear = yr;
-            const mk = s.substring(0, 3);
-            if (MONTH_MAP[mk] !== undefined) {
-              ganttCols.push({ colIdx: c, year: currentYear, month: MONTH_MAP[mk], label: String(v).trim() });
-            }
-          }
-        }
-
-        // ── Parse table2 header row to find column indices ────────────────────
-        const h2 = (allRows[table2HeaderIdx] || []).map(c => String(c || '').trim());
+        // ── Step 3: Parse table2 header row ──────────────────────────────────
+        const h2raw = allRows[table2HeaderIdx] || [];
+        const h2 = h2raw.map(c => cellStr(c));
 
         const findCol = (...kws) => h2.findIndex(h =>
-          kws.some(k => h.toLowerCase().replace(/\s+/g,'').includes(k.toLowerCase().replace(/\s+/g,'')))
+          kws.some(k => h.toLowerCase().replace(/[\s\-_]/g,'').includes(k.toLowerCase().replace(/[\s\-_]/g,'')))
         );
 
-        const colN         = findCol('N°','Nro','#');
+        const colN         = findCol('N°','Nro','Num');
         const colIndicador = findCol('Indicador');
-        const colProyecto  = findCol('PROYECTO','Nombre del Proyecto','Proyecto');
+        const colProyecto  = findCol('PROYECTO','NombreProyecto','Proyecto');
         const colGerencia  = findCol('Gerencia','GerenciaL');
         const colGestor    = findCol('Gestor','Responsable');
-        const colPlan      = findCol('% Planificado','%Planificado','Planificado');
-        // The "%" column for executed is usually right after planificado
-        const colExec      = (() => {
-          // Find the column that is just "%" or "% Ejecutado" or "% Avance Completado"
+        const colPlan      = findCol('Planificado','%Plan','AvancePlan');
+        // Exec column: "%" alone, or right after plan col
+        const colExec = (() => {
           const idx = h2.findIndex((h, i) => {
-            const s = h.toLowerCase().replace(/\s+/g,'');
-            return (s === '%' || s.includes('ejecutado') || s.includes('completado') || s.includes('avanceejec')) && i !== colPlan;
+            const s = h.toLowerCase().replace(/[\s\-_]/g,'');
+            return i !== colPlan && (s === '%' || s.includes('ejecutado') || s.includes('completado') || s.includes('avanceejec') || s.includes('avancecomp'));
           });
-          // If not found, try the column right after colPlan
-          return idx !== -1 ? idx : (colPlan !== -1 ? colPlan + 1 : -1);
+          if (idx !== -1) return idx;
+          // fallback: column right after plan
+          return colPlan !== -1 ? colPlan + 1 : -1;
         })();
-        const colInicio    = findCol('Fecha Inicio','FechaInicio','Inicio');
-        const colFin       = findCol('Fecha Fin','FechaFin','Fin');
+        const colInicio = findCol('FechaInicio','Inicio','FInicio');
+        const colFin    = findCol('FechaFin','Fin','FFin');
 
-        // ── Parse data rows ───────────────────────────────────────────────────
-        // Structure: project row (has indicador) → etapa rows → activity rows (Desarrollo/Calidad/Produccion)
-        // Activities are sub-rows of etapas (or directly of project if no etapas)
-
-        const ACTIVITY_NAMES = /^(desarrollo|calidad|producci[oó]n|testing|qa|deploy|implementaci[oó]n)/i;
-        const ETAPA_NAMES = /^(etapa|fase|mvp|sprint|release|hito)/i;
+        // ── Step 4: Parse data rows ───────────────────────────────────────────
+        const ETAPA_RE    = /^(etapa|fase|mvp|sprint|release|hito|milestone)/i;
+        const ACTIVITY_RE = /^(desarrollo|calidad|producci[oó]n|testing|qa|deploy|implementaci[oó]n|uat|certificaci[oó]n)/i;
+        // Entregables and similar are always flat leaves — never parents of other rows
+        const LEAF_RE     = /^(entregable|deliverable|componente|m[oó]dulo)/i;
+        const INDICATOR_RE = /^(en curso|en riesgo|atrasado|finalizado|no iniciado|completado)/i;
 
         const schedule = [];
-        let currentProject = null;
-        let currentEtapa = null;
+        let curProject = null;
+        let curEtapa   = null;
 
-        const getCell = (row, idx) => (idx !== -1 && idx < row.length) ? row[idx] : null;
+        const getCell = (row, idx) => (idx >= 0 && idx < row.length) ? row[idx] : null;
 
         for (let r = table2HeaderIdx + 1; r < allRows.length; r++) {
           const row = allRows[r];
           if (!row) continue;
-          // Stop on fully empty row (but allow sparse rows)
-          const nonEmpty = row.filter(c => c !== null && c !== undefined && c !== '');
-          if (nonEmpty.length === 0) {
-            // Two consecutive empty rows = end of table
-            const nextRow = allRows[r + 1];
-            if (!nextRow || nextRow.filter(c => c !== null && c !== undefined && c !== '').length === 0) break;
-            continue;
-          }
+          const nonNull = row.filter(c => c !== null && c !== undefined && c !== '');
+          if (nonNull.length === 0) continue;
 
           const rawName      = getCell(row, colProyecto);
           const rawIndicador = getCell(row, colIndicador);
@@ -964,77 +958,131 @@ export default function App() {
           const rawGerencia  = getCell(row, colGerencia);
           const rawGestor    = getCell(row, colGestor);
 
-          const name      = rawName ? String(rawName).trim() : null;
-          const indicador = rawIndicador ? String(rawIndicador).trim() : null;
+          const name      = rawName ? cellStr(rawName) : null;
+          const indicador = rawIndicador ? cellStr(rawIndicador) : null;
 
           if (!name) continue;
 
-          const planPct    = toNum(rawPlan);
-          const execPct    = toNum(rawExec);
+          const planPct     = toNum(rawPlan);
+          const execPct     = toNum(rawExec);
           const fechaInicio = toDate(rawInicio);
           const fechaFin    = toDate(rawFin);
 
-          const rowData = {
+          const rowBase = {
             nombre: name,
-            planPct,
-            execPct,
-            fechaInicio,
-            fechaFin,
+            planPct, execPct,
+            fechaInicio, fechaFin,
             fechaInicioStr: toDateStr(rawInicio),
             fechaFinStr:    toDateStr(rawFin),
           };
 
-          // Classify row type
-          const hasIndicador = indicador && /^(en curso|en riesgo|atrasado|finalizado|no iniciado)/i.test(indicador);
-          const hasN = rawN !== null && rawN !== undefined && !isNaN(parseInt(rawN));
-          const isActivity = ACTIVITY_NAMES.test(name);
-          const isEtapa = ETAPA_NAMES.test(name);
+          const hasIndicator = indicador && INDICATOR_RE.test(indicador);
+          const hasN         = rawN !== null && rawN !== undefined && !isNaN(parseInt(String(rawN)));
+          const isLeaf       = LEAF_RE.test(name) || ACTIVITY_RE.test(name);
+          const isEtapa      = !isLeaf && ETAPA_RE.test(name);
 
-          if (hasIndicador || hasN) {
-            // PROJECT row
-            currentProject = {
-              ...rowData,
+          if (hasIndicator || hasN) {
+            // PROJECT ROW
+            curProject = {
+              ...rowBase,
               indicador: indicador || '',
-              gerencia: rawGerencia ? String(rawGerencia).trim() : '',
-              gestor:   rawGestor   ? String(rawGestor).trim()   : '',
+              gerencia:  rawGerencia ? cellStr(rawGerencia) : '',
+              gestor:    rawGestor   ? cellStr(rawGestor)   : '',
               etapas: [],
             };
-            currentEtapa = null;
-            schedule.push(currentProject);
-          } else if (isEtapa && currentProject) {
-            // ETAPA row
-            currentEtapa = { ...rowData, actividades: [] };
-            currentProject.etapas.push(currentEtapa);
-          } else if (isActivity && currentProject) {
-            // ACTIVITY row — belongs to current etapa or directly to project
-            const actRow = { ...rowData };
-            if (currentEtapa) {
-              currentEtapa.actividades.push(actRow);
+            curEtapa = null;
+            schedule.push(curProject);
+          } else if (isEtapa && curProject) {
+            // ETAPA ROW — can have children
+            curEtapa = { ...rowBase, actividades: [] };
+            curProject.etapas.push(curEtapa);
+          } else if (isLeaf && curProject) {
+            // LEAF ROW (entregable, actividad) — always flat, never a parent
+            // Attach to current etapa if one exists, otherwise directly to project
+            if (curEtapa) {
+              curEtapa.actividades.push({ ...rowBase });
             } else {
-              // No etapa yet — create a virtual "direct" etapa bucket
-              if (!currentProject._directActividades) {
-                currentProject._directActividades = [];
-              }
-              currentProject._directActividades.push(actRow);
+              if (!curProject._direct) curProject._direct = [];
+              curProject._direct.push({ ...rowBase });
             }
-          } else if (currentProject) {
-            // Unknown sub-row: treat as etapa if no current etapa, else as activity
-            if (!currentEtapa) {
-              currentEtapa = { ...rowData, actividades: [] };
-              currentProject.etapas.push(currentEtapa);
+          } else if (curProject) {
+            // Unknown sub-row: treat as etapa only if no curEtapa yet AND it looks
+            // like it could be a section header (short name). Otherwise treat as leaf.
+            const looksLikeSection = name.length <= 40 && !name.includes(' - ');
+            if (!curEtapa && looksLikeSection) {
+              curEtapa = { ...rowBase, actividades: [] };
+              curProject.etapas.push(curEtapa);
             } else {
-              currentEtapa.actividades.push({ ...rowData });
+              // Treat as a flat leaf under current etapa or project
+              if (curEtapa) {
+                curEtapa.actividades.push({ ...rowBase });
+              } else {
+                if (!curProject._direct) curProject._direct = [];
+                curProject._direct.push({ ...rowBase });
+              }
             }
           }
         }
 
-        // Move _directActividades into a synthetic etapa for uniform rendering
+        // Promote _direct activities into a synthetic etapa
         schedule.forEach(p => {
-          if (p._directActividades && p._directActividades.length > 0) {
-            p.etapas.unshift({ nombre: '', actividades: p._directActividades, planPct: null, execPct: null, fechaInicio: null, fechaFin: null, fechaInicioStr: null, fechaFinStr: null });
-            delete p._directActividades;
+          if (p._direct && p._direct.length > 0) {
+            p.etapas.unshift({
+              nombre: '', planPct: null, execPct: null,
+              fechaInicio: null, fechaFin: null, fechaInicioStr: null, fechaFinStr: null,
+              actividades: p._direct,
+            });
+            delete p._direct;
           }
         });
+
+        // ── Step 5: Ensure ganttCols cover the full date range of all rows ────
+        // Collect every fechaInicio and fechaFin across all projects, etapas, children
+        const allDates = [];
+        const collectDates = (row) => {
+          if (row.fechaInicio) allDates.push(row.fechaInicio);
+          if (row.fechaFin)    allDates.push(row.fechaFin);
+        };
+        schedule.forEach(p => {
+          collectDates(p);
+          p.etapas.forEach(e => {
+            collectDates(e);
+            (e.actividades || e.children || []).forEach(a => collectDates(a));
+          });
+        });
+
+        if (allDates.length > 0) {
+          const MONTH_NAMES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+          const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+          const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
+
+          // Start from the earliest date (no buffer — exact coverage)
+          const rangeStart = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+          const rangeEnd   = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+
+          // Check if existing ganttCols already cover the range
+          const firstCol = ganttCols.length > 0 ? new Date(ganttCols[0].year, ganttCols[0].month, 1) : null;
+          const lastCol  = ganttCols.length > 0 ? new Date(ganttCols[ganttCols.length - 1].year, ganttCols[ganttCols.length - 1].month, 1) : null;
+
+          const needsExpansion = ganttCols.length === 0 || firstCol > rangeStart || lastCol < rangeEnd;
+
+          if (needsExpansion) {
+            // Rebuild from scratch covering the full range
+            ganttCols = [];
+            let cur = new Date(rangeStart);
+            let idx = 0;
+            while (cur <= rangeEnd) {
+              ganttCols.push({
+                colIdx: idx,
+                year:  cur.getFullYear(),
+                month: cur.getMonth(),
+                label: MONTH_NAMES[cur.getMonth()],
+              });
+              cur.setMonth(cur.getMonth() + 1);
+              idx++;
+            }
+          }
+        }
 
         setDemand2Data({ schedule, ganttCols });
         setLoading(false);
@@ -1047,7 +1095,6 @@ export default function App() {
     };
     reader.readAsBinaryString(file);
   };
-
   const getFilterOptions = (field) => {
     let source = [];
     if (activeTab === 'trend') source = data?.trend || [];
@@ -1073,7 +1120,12 @@ export default function App() {
 
       let matchChart = true;
       if (portfolioFilter) {
-        matchChart = String(item[portfolioFilter.key] || '').includes(portfolioFilter.value);
+        if (portfolioFilter.key === 'Gerencia Líder' && portfolioFilter.value === 'Otros') {
+          // "Otros" means blank/null Gerencia Líder
+          matchChart = !item['Gerencia Líder'] || String(item['Gerencia Líder']).trim() === '';
+        } else {
+          matchChart = String(item[portfolioFilter.key] || '').includes(portfolioFilter.value);
+        }
       }
 
       const projectNameStr = String(item['Nombre del Proyecto'] || '').toLowerCase().trim();
@@ -1321,18 +1373,31 @@ export default function App() {
         if (weeklyChartFilter.key === 'Proyecto') {
           matchChart = String(item['PROYECTO'] || item['Nombre del Proyecto'] || '').includes(weeklyChartFilter.value);
         } else if (weeklyChartFilter.key === 'Estado') {
-          const raw = (item['Estado'] || '').toLowerCase();
-          let estado = 'Otros';
-          if (raw.includes('proceso') || raw.includes('curso')) estado = 'En Proceso';
-          if (raw.includes('finalizado') || raw.includes('cerrado') || raw.includes('implementado') || raw.includes('terminado')) estado = 'Finalizado';
-          if (raw.includes('observado') || raw.includes('subsanar') || raw.includes('observación')) estado = 'Observado';
-          if (raw.includes('pendiente') || raw.includes('atrasado') || raw.includes('iniciar')) estado = 'Pendiente';
-          matchChart = estado === weeklyChartFilter.value;
+          // Match using same normalization as the chart
+          const raw = item['Estado'] || '';
+          const s = raw.trim().toLowerCase();
+          let normalized;
+          if (s.startsWith('finalizado') || s.startsWith('cerrado') || s.startsWith('terminado') || s.startsWith('implementado')) normalized = 'Finalizado';
+          else if (s.startsWith('en proceso') || s.startsWith('en curso')) normalized = 'En Proceso';
+          else if (s.startsWith('pendiente')) normalized = 'Pendiente';
+          else if (s.startsWith('observado')) normalized = 'Observado';
+          else if (s.startsWith('por definir')) normalized = 'Por Definir';
+          else if (s.startsWith('bloqueado')) normalized = 'Bloqueado';
+          else if (s.startsWith('cancelado') || s.startsWith('descartado')) normalized = 'Cancelado';
+          else { const cut = raw.split(/\s*[-–—:()]\s*/)[0].trim(); normalized = cut.length <= 25 ? (cut.charAt(0).toUpperCase() + cut.slice(1)) : 'Otros'; }
+          // When filter is 'Otros', match anything that normalized to 'Otros'
+          matchChart = normalized === weeklyChartFilter.value;
         }
       }
       
       const matchWeeklyColumnFilters = Object.entries(weeklyColumnFilters).every(([key, value]) => {
         if (!value || value === 'Todos') return true;
+        // Responsable can be "Juan / Pedro" — match if any individual name matches
+        if (key === 'Responsable') {
+          const raw = item['Responsable'] || item['LÍDER TÉCNICO'] || item['LIDER DEL PROYECTO'] || '';
+          const names = String(raw).split('/').map(n => n.trim());
+          return names.some(n => n === String(value).trim());
+        }
         const strVal = String(item[key] || '').trim();
         if (value === 'Otros') {
           return strVal === '' || strVal === '-' || strVal === '0';
@@ -2586,11 +2651,17 @@ export default function App() {
     const stats = calculatePortfolioStats(filteredPortfolio);
 
     // Get unique values for charts
-    const managementData = Array.from(new Set(filteredPortfolio.map(p => p['Gerencia Líder'])))
-      .map(mgmt => ({
-        name: mgmt,
-        value: filteredPortfolio.filter(p => p['Gerencia Líder'] === mgmt).length
-      }));
+    const managementData = (() => {
+      const counts = {};
+      filteredPortfolio.forEach(p => {
+        const g = (p['Gerencia Líder'] || '').trim();
+        const key = g || 'Otros';
+        counts[key] = (counts[key] || 0) + 1;
+      });
+      return Object.entries(counts)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value);
+    })();
 
     const avgProgressData = [
       {
@@ -2764,14 +2835,14 @@ export default function App() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white p-6 border border-gray-200 rounded shadow-sm relative">
                 <div className="absolute top-4 right-4 bg-gray-100 px-2 py-0.5 rounded text-[9px] font-bold text-gray-500">
-                  TOTAL: {managementData.length}
+                  TOTAL: {managementData.reduce((a, d) => a + d.value, 0)}
                 </div>
                 <h3 className="text-xs font-bold uppercase text-gray-500 mb-6 tracking-widest">Proyectos por Gerencia Líder</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       layout="vertical"
-                      data={managementData.sort((a, b) => b.value - a.value).slice(0, 8)}
+                      data={managementData}
                       onClick={(data) => {
                         if (data && data.activeLabel) {
                           if (portfolioFilter?.value === data.activeLabel) {
@@ -3354,14 +3425,28 @@ export default function App() {
         value: filteredWeekly.filter(w => w['PROYECTO'] === name).length
       })).sort((a, b) => b.value - a.value).slice(0, 10);
 
-    const estadosRawData = filteredWeekly.map(w => {
-      const raw = (w['Estado'] || '').toLowerCase();
-      if (raw.includes('proceso') || raw.includes('curso')) return 'En Proceso';
-      if (raw.includes('finalizado') || raw.includes('cerrado') || raw.includes('implementado') || raw.includes('terminado')) return 'Finalizado';
-      if (raw.includes('observado') || raw.includes('subsanar') || raw.includes('observación')) return 'Observado';
-      if (raw.includes('pendiente') || raw.includes('atrasado') || raw.includes('iniciar')) return 'Pendiente';
-      return 'Otros';
-    });
+    // Normalize Estado: match known keywords at the start; long unknowns → 'Otros'
+    const KNOWN_ESTADO_PREFIXES = [
+      { keys: ['finalizado','cerrado','terminado','implementado'], label: 'Finalizado' },
+      { keys: ['en proceso','en curso'],                           label: 'En Proceso' },
+      { keys: ['pendiente'],                                       label: 'Pendiente'  },
+      { keys: ['observado'],                                       label: 'Observado'  },
+      { keys: ['por definir'],                                     label: 'Por Definir'},
+      { keys: ['bloqueado'],                                       label: 'Bloqueado'  },
+      { keys: ['cancelado','descartado'],                          label: 'Cancelado'  },
+    ];
+    const normalizeEstado = (raw) => {
+      if (!raw) return 'Sin estado';
+      const s = String(raw).trim().toLowerCase();
+      for (const { keys, label } of KNOWN_ESTADO_PREFIXES) {
+        if (keys.some(k => s.startsWith(k))) return label;
+      }
+      // Unknown: keep short values as-is, collapse long ones into 'Otros'
+      const cut = String(raw).split(/\s*[-–—:()]\s*/)[0].trim();
+      return cut.length <= 25 ? (cut.charAt(0).toUpperCase() + cut.slice(1)) : 'Otros';
+    };
+
+    const estadosRawData = filteredWeekly.map(w => normalizeEstado(w['Estado']));
 
     const estadosMap = estadosRawData.reduce((acc, curr) => {
       acc[curr] = (acc[curr] || 0) + 1;
@@ -3369,12 +3454,15 @@ export default function App() {
     }, {});
     const estadoData = Object.entries(estadosMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 
-    const COLORS_MAP = {
-      'En Proceso': '#2563eb', // Blue
-      'Finalizado': '#16a34a', // Green
-      'Observado': '#e11d48',  // Red
-      'Pendiente': '#f59e0b',  // Amber
-      'Otros': '#9ca3af'       // Gray
+    const COLORS_WEEKLY = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#9333ea', '#0891b2', '#f43f5e', '#8b5cf6', '#10b981', '#6b7280'];
+    const getEstadoColor = (name) => {
+      const s = (name || '').toLowerCase();
+      if (s.includes('finalizado') || s.includes('cerrado') || s.includes('terminado') || s.includes('implementado')) return '#16a34a';
+      if (s.includes('pendiente') || s.includes('atrasado')) return '#f59e0b';
+      if (s.includes('proceso') || s.includes('curso')) return '#2563eb';
+      if (s.includes('observado') || s.includes('subsanar')) return '#e11d48';
+      if (s.includes('sin estado')) return '#9ca3af';
+      return null;
     };
 
     return (
@@ -3521,7 +3609,7 @@ export default function App() {
                     className="cursor-pointer"
                   >
                     {estadoData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS_MAP[entry.name] || '#9ca3af'} />
+                      <Cell key={`cell-${index}`} fill={getEstadoColor(entry.name) || COLORS_WEEKLY[index % COLORS_WEEKLY.length]} />
                     ))}
                   </Pie>
                   <Tooltip
@@ -3629,7 +3717,7 @@ export default function App() {
                     dateStr = new Date((excelDate - 25569) * 86400 * 1000).toLocaleDateString('es-CL');
                   }
                   const estado = (w['Estado'] || 'Sin estado');
-                  const isClosed = estado.toLowerCase().includes('cerrado');
+                  const isClosed = estado.toLowerCase().includes('cerrado') || estado.toLowerCase().includes('finalizado');
                   return (
                     <tr key={i} className="hover:bg-gray-50/80 transition-colors">
                       <td className="px-6 py-4">
@@ -3767,23 +3855,12 @@ export default function App() {
             </button>
           )}
         </div>
-
-        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-corporate-dark flex items-center space-x-2 px-4 py-2 rounded-lg hover:bg-gray-50 transition-all cursor-pointer">
-          <Upload className="w-3 h-3" />
-          <span>Cargar nuevo archivo</span>
-          <input
-            type="file"
-            accept=".xlsx, .xls"
-            onChange={handleFileUpload}
-            className="hidden"
-          />
-        </label>
       </nav>
 
       {/* Filter Bar (Horizontal) */}
-      {!showStrategicDetail && (
+      {!showStrategicDetail && activeTab !== 'demand2' && (
         <div className="bg-white border-b border-gray-100 p-4 flex flex-wrap gap-4 items-center shrink-0 px-10">
-          {(activeTab === 'trend' || activeTab === 'weekly') ? (
+          {activeTab === 'trend' ? (
             <>
               <div className="flex items-center space-x-3">
                 <Users className="w-4 h-4 text-gray-400" />
@@ -3817,7 +3894,7 @@ export default function App() {
                 </select>
               </div>
             </>
-          ) : (
+          ) : activeTab === 'weekly' ? null : (
             <>
               <div className="flex items-center space-x-3">
                 <LayoutDashboard className="w-4 h-4 text-gray-400" />
