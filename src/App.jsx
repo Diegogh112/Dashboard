@@ -260,9 +260,79 @@ export default function App() {
   const [portfolioSearch, setPortfolioSearch] = useState('');
   const [tableColumnFilters, setTableColumnFilters] = useState({});
   const [portfolioColumnFilters, setPortfolioColumnFilters] = useState({});
-  const [activeFilterMenu, setActiveFilterMenu] = useState(null); // { key: string, rect: DOMRect, isPortfolio?: boolean }
+  const [activeFilterMenu, setActiveFilterMenu] = useState(null); // { key: string, rect: DOMRect, isPortfolio?: boolean, isTrend?: boolean, isWeekly?: boolean }
+  const [weeklyColumnFilters, setWeeklyColumnFilters] = useState({});
+  const [weeklyChartFilter, setWeeklyChartFilter] = useState(null); // { key: string, value: string }
   const [selectedOpp, setSelectedOpp] = useState(null); // For expanded OPP view
   const [showStrategicDetail, setShowStrategicDetail] = useState(false);
+
+  const getUniqueValues = (key, isPortfolio = false, isTrend = false, isWeekly = false) => {
+    let source = [];
+    if (isPortfolio) {
+      source = data?.portfolio || [];
+    } else if (isTrend) {
+      source = data?.trend || [];
+    } else if (isWeekly) {
+      source = data?.weekly || [];
+    } else if (activeTab === 'demand2') {
+      source = demand2Data || [];
+    } else if (activeTab === 'trend') {
+      source = data?.trend || [];
+    } else if (activeTab === 'demand') {
+      source = data?.demand || [];
+    } else if (activeTab === 'weekly') {
+      source = data?.weekly || [];
+    }
+
+    const values = source
+      .map(item => {
+        if (isPortfolio) {
+          if (key === 'Priorizado') {
+            const prioritizedProjectNames = new Set(
+              (data?.trend || []).map(t => String(t['Proyecto'] || '').toLowerCase().trim())
+            );
+            return prioritizedProjectNames.has(String(item['Nombre del Proyecto'] || '').toLowerCase().trim()) ? 'Sí' : 'No';
+          }
+          if (key === 'Salud') return getHealthColor(item).includes('bg-green') ? 'Excelente' : getHealthColor(item).includes('bg-yellow') ? 'En Riesgo' : 'Retraso';
+          if (key === 'Nombre del Proyecto') return item['Nombre del Proyecto'];
+        } else if (isTrend || activeTab === 'trend') {
+          if (key === 'Proyecto') return item['Proyecto'];
+          if (key === 'Tipo de Proyecto') {
+            let type = item['Tipo de Proyecto'];
+            if (type === "0" || type === 0) {
+              type = "Otros (0)";
+            } else if (!type || String(type).trim() === "" || String(type).toLowerCase() === "null") {
+              type = "Por asignar";
+            } else {
+              type = String(type).trim();
+            }
+            return type;
+          }
+        } else if (activeTab === 'demand' || activeTab === 'demand2') {
+          if (key === 'Salud') return getDemandProjectHealth(item).label;
+          if (key === 'Nombre del Proyecto') return item['Nombre del Proyecto'] || item['PROYECTO'];
+        }
+        
+        const val = item[key];
+        const strVal = String(val || '').trim();
+        if (strVal === '' || strVal === '-' || strVal === '0') {
+          return 'Otros';
+        }
+        return val;
+      })
+      .filter(v => v !== null && v !== undefined && v !== '');
+    return Array.from(new Set(values)).sort();
+  };
+
+  const handleFilterClick = (key, e, isPortfolio = false, isTrend = false, isWeekly = false) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (activeFilterMenu?.key === key && activeFilterMenu?.isPortfolio === isPortfolio && activeFilterMenu?.isTrend === isTrend && activeFilterMenu?.isWeekly === isWeekly) {
+      setActiveFilterMenu(null);
+    } else {
+      setActiveFilterMenu({ key, rect, isPortfolio, isTrend, isWeekly });
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = () => setActiveFilterMenu(null);
@@ -281,6 +351,9 @@ export default function App() {
 
   const [trendFilter, setTrendFilter] = useState(null); // { month: string }
   const [trendViewMode, setTrendViewMode] = useState('meses'); // 'meses' | 'años'
+  const [trendTypeFilter, setTrendTypeFilter] = useState(null); // { type: string }
+  const [trendSearch, setTrendSearch] = useState('');
+  const [trendColumnFilters, setTrendColumnFilters] = useState({});
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -463,10 +536,10 @@ export default function App() {
           });
         };
 
-        const trendSheetName = 
+        const trendSheetName =
           wb.SheetNames.find(n => n.toLowerCase().includes('pys transf digital')) ||
-          findSheet(wb, ['pys', 'transf', 'digital']) || 
-          findSheet(wb, ['tendencia']) || 
+          findSheet(wb, ['pys', 'transf', 'digital']) ||
+          findSheet(wb, ['tendencia']) ||
           (wb.SheetNames.length > 3 ? wb.SheetNames[3] : wb.SheetNames[wb.SheetNames.length - 1]);
 
         const sheets = {
@@ -512,7 +585,13 @@ export default function App() {
           const normalized = rawData.map(item => {
             let newItem = {};
             const keyMaps = {
+              'Indicador': ['Indicador', 'INDICADOR', 'N°'],
               'Gerencia Líder': ['Gerencia Líder', 'Gerencia Lider', 'Gerencia', 'GERENCIA'],
+              'Gestor': ['Gestor', 'GESTOR', 'Responsable', 'RESPONSABLE'],
+              '% Avance Planificado': ['% Planificado', '% Planificado:', '%AvancePlanificado', '% avance planificado', '% Avance Planificado'],
+              '% Avance ejecutado': ['%', '% Ejecutado', '% Avance Completado', '% avance completado', '% Avance ejecutado', '% Avance Ejecutado'],
+              'Fecha Inicio': ['Fecha Inicio', 'FECHA INICIO', 'Inicio'],
+              'Fecha Fin': ['Fecha Fin', 'FECHA FIN', 'Fin'],
               'Cartera': ['Cartera', 'CARTERA', 'Portafolio'],
               'Presupuesto asignado': ['Presupuesto', 'PRESUPUESTO', 'Costo'],
               'Nombre del Proyecto': ['Nombre del Proyecto', 'PROYECTO', 'Nombre'],
@@ -531,7 +610,7 @@ export default function App() {
               newItem[newKey] = item[key];
             });
             return newItem;
-          }).filter(item => item['Nombre del Proyecto']);
+          }).filter(item => item['Nombre del Proyecto'] || item['PROYECTO']);
 
           setDemand2Data(normalized);
           setLoading(false);
@@ -700,7 +779,50 @@ export default function App() {
         const matchMgmt = sidebarFilters.management === 'Todas' || t['Gerencia Líder'] === sidebarFilters.management;
         const matchDimension = sidebarFilters.dimension === 'Todas' || t['Dimensión'] === sidebarFilters.dimension;
         const matchPortfolio = topPortfolio === 'Todas' || t['Cartera'] === topPortfolio;
-        return matchMgmt && matchDimension && matchPortfolio;
+        if (!matchMgmt || !matchDimension || !matchPortfolio) return false;
+        
+        if (trendTypeFilter) {
+          let type = t['Tipo de Proyecto'];
+          if (type === "0" || type === 0) {
+            type = "Otros (0)";
+          } else if (!type || String(type).trim() === "" || String(type).toLowerCase() === "null") {
+            type = "Por asignar";
+          } else {
+            type = String(type).trim();
+          }
+          if (type !== trendTypeFilter.type) return false;
+        }
+        
+        if (trendSearch) {
+          const projectNameStr = String(t['Proyecto'] || '').toLowerCase().trim();
+          if (!projectNameStr.includes(trendSearch.toLowerCase().trim())) return false;
+        }
+        
+        const matchTrendColumnFilters = Object.entries(trendColumnFilters).every(([key, value]) => {
+          if (!value || value === 'Todos') return true;
+          if (key === 'Tipo de Proyecto') {
+            let type = t['Tipo de Proyecto'];
+            if (type === "0" || type === 0) {
+              type = "Otros (0)";
+            } else if (!type || String(type).trim() === "" || String(type).toLowerCase() === "null") {
+              type = "Por asignar";
+            } else {
+              type = String(type).trim();
+            }
+            return type === value;
+          }
+          
+          if (value === 'Otros') {
+            const strVal = String(t[key] || '').trim();
+            return strVal === '' || strVal === '-' || strVal === '0';
+          }
+          
+          return String(t[key] || '') === String(value);
+        });
+        
+        if (!matchTrendColumnFilters) return false;
+        
+        return true;
       })
       : data?.trend?.filter(t =>
         String(t['Proyecto']).trim().toLowerCase() === String(selectedProjectName).trim().toLowerCase()
@@ -748,8 +870,8 @@ export default function App() {
     };
 
     return sortedTimepoints.map(tp => {
-      // For the year 2023, we use the specific '2023' key and assume 100% plan
-      const planValues = projectsToInclude.map(p => tp === '2023' ? 100 : parseVal(p[`${tp} Plan`])).filter(v => v !== null);
+      // For the year 2023, we use the specific '2023' key if it has valid data
+      const planValues = projectsToInclude.map(p => tp === '2023' ? parseVal(p['2023']) : parseVal(p[`${tp} Plan`])).filter(v => v !== null);
       const execValues = projectsToInclude.map(p => parseVal(p[tp === '2023' ? '2023' : `${tp} Exec`])).filter(v => v !== null);
 
       return {
@@ -758,7 +880,7 @@ export default function App() {
         exec: execValues.length > 0 ? parseFloat((execValues.reduce((a, b) => a + b, 0) / execValues.length).toFixed(2)) : null
       };
     }).filter(d => d.plan !== null || d.exec !== null);
-  }, [selectedProjectName, sidebarFilters.management, sidebarFilters.dimension, topPortfolio, data?.trend]);
+  }, [selectedProjectName, sidebarFilters.management, sidebarFilters.dimension, topPortfolio, data?.trend, trendTypeFilter, trendSearch, trendColumnFilters]);
 
   const filteredDemand2 = useMemo(() => {
     if (!demand2Data) return [];
@@ -795,9 +917,34 @@ export default function App() {
       const matchDimension = sidebarFilters.dimension === 'Todas' || item['Dimensión'] === sidebarFilters.dimension;
       const matchPortfolio = topPortfolio === 'Todas' || item['Cartera'] === topPortfolio;
       const matchProject = !selectedProjectName || item['PROYECTO'] === selectedProjectName || item['Nombre del Proyecto'] === selectedProjectName;
-      return matchMgmt && matchDimension && matchPortfolio && matchProject;
+      
+      let matchChart = true;
+      if (weeklyChartFilter) {
+        if (weeklyChartFilter.key === 'Proyecto') {
+          matchChart = String(item['PROYECTO'] || item['Nombre del Proyecto'] || '').includes(weeklyChartFilter.value);
+        } else if (weeklyChartFilter.key === 'Estado') {
+          const raw = (item['Estado'] || '').toLowerCase();
+          let estado = 'Otros';
+          if (raw.includes('proceso') || raw.includes('curso')) estado = 'En Proceso';
+          if (raw.includes('finalizado') || raw.includes('cerrado') || raw.includes('implementado') || raw.includes('terminado')) estado = 'Finalizado';
+          if (raw.includes('observado') || raw.includes('subsanar') || raw.includes('observación')) estado = 'Observado';
+          if (raw.includes('pendiente') || raw.includes('atrasado') || raw.includes('iniciar')) estado = 'Pendiente';
+          matchChart = estado === weeklyChartFilter.value;
+        }
+      }
+      
+      const matchWeeklyColumnFilters = Object.entries(weeklyColumnFilters).every(([key, value]) => {
+        if (!value || value === 'Todos') return true;
+        const strVal = String(item[key] || '').trim();
+        if (value === 'Otros') {
+          return strVal === '' || strVal === '-' || strVal === '0';
+        }
+        return strVal === String(value);
+      });
+      
+      return matchMgmt && matchDimension && matchPortfolio && matchProject && matchChart && matchWeeklyColumnFilters;
     });
-  }, [data, sidebarFilters.management, sidebarFilters.dimension, topPortfolio, selectedProjectName]);
+  }, [data, sidebarFilters.management, sidebarFilters.dimension, topPortfolio, selectedProjectName, weeklyChartFilter, weeklyColumnFilters]);
 
   const associatedDemands = useMemo(() => {
     if (!selectedProjectName || !data?.demand) return [];
@@ -820,15 +967,75 @@ export default function App() {
       if (!matchMgmt || !matchDimension || !matchPortfolio) return false;
       if (selectedProjectName && t['Proyecto'] !== selectedProjectName) return false;
       if (trendFilter && !Object.keys(t).some(k => k.includes(trendFilter.month))) return false;
+      
+      if (trendTypeFilter) {
+        let type = t['Tipo de Proyecto'];
+        if (type === "0" || type === 0) {
+          type = "Otros (0)";
+        } else if (!type || String(type).trim() === "" || String(type).toLowerCase() === "null") {
+          type = "Por asignar";
+        } else {
+          type = String(type).trim();
+        }
+        if (type !== trendTypeFilter.type) return false;
+      }
+      
+      if (trendSearch) {
+        const projectNameStr = String(t['Proyecto'] || '').toLowerCase().trim();
+        if (!projectNameStr.includes(trendSearch.toLowerCase().trim())) return false;
+      }
+      
+      const matchTrendColumnFilters = Object.entries(trendColumnFilters).every(([key, value]) => {
+        if (!value || value === 'Todos') return true;
+        if (key === 'Tipo de Proyecto') {
+          let type = t['Tipo de Proyecto'];
+          if (type === "0" || type === 0) {
+            type = "Otros (0)";
+          } else if (!type || String(type).trim() === "" || String(type).toLowerCase() === "null") {
+            type = "Por asignar";
+          } else {
+            type = String(type).trim();
+          }
+          return type === value;
+        }
+        
+        if (value === 'Otros') {
+          const strVal = String(t[key] || '').trim();
+          return strVal === '' || strVal === '-' || strVal === '0';
+        }
+        
+        return String(t[key] || '') === String(value);
+      });
+      
+      if (!matchTrendColumnFilters) return false;
+      
       return true;
     });
 
     const total = filteredTrend.length;
     const typeCounts = {};
+    
+    // Initialize counts for specific statuses to ensure they always show
+    const statusLabels = ['01. No Iniciado', '02. En Curso', '03. Implementado', '04. Cerrado', '05. Descartado'];
+    statusLabels.forEach(label => counts[label] = 0);
+    
     filteredTrend.forEach(t => {
-      const s = t['Estado'] || 'Sin Estado';
-      counts[s] = (counts[s] || 0) + 1;
+      let s = t['Estado'] || 'Sin Estado';
+      // Normalize status to match specific labels
+      if (s.toLowerCase().includes('no iniciado') || s.toLowerCase().includes('01')) {
+        s = '01. No Iniciado';
+      } else if (s.toLowerCase().includes('en curso') || s.toLowerCase().includes('02') || s.toLowerCase().includes('ejecución')) {
+        s = '02. En Curso';
+      } else if (s.toLowerCase().includes('implementado') || s.toLowerCase().includes('03')) {
+        s = '03. Implementado';
+      } else if (s.toLowerCase().includes('cerrado') || s.toLowerCase().includes('04') || s.toLowerCase().includes('finalizado')) {
+        s = '04. Cerrado';
+      } else if (s.toLowerCase().includes('descartado') || s.toLowerCase().includes('05')) {
+        s = '05. Descartado';
+      }
       
+      counts[s] = (counts[s] || 0) + 1;
+
       let type = t['Tipo de Proyecto'];
       // Normalize type according to user requirements and image
       if (type === "0" || type === 0) {
@@ -841,7 +1048,7 @@ export default function App() {
       typeCounts[type] = (typeCounts[type] || 0) + 1;
     });
     return { total, counts, typeCounts };
-  }, [data?.trend, selectedProjectName, trendFilter, sidebarFilters.management, sidebarFilters.dimension, topPortfolio]);
+  }, [data?.trend, selectedProjectName, trendFilter, trendTypeFilter, sidebarFilters.management, sidebarFilters.dimension, topPortfolio, trendSearch, trendColumnFilters]);
 
   const trendByYear = useMemo(() => {
     const years = {};
@@ -863,39 +1070,6 @@ export default function App() {
 
   const renderDemandDashboard = () => {
     const stats = calculateDemandStats(filteredDemand);
-
-    const getUniqueValues = (key, isPortfolio = false) => {
-      const source = isPortfolio ? data?.portfolio || [] : data?.demand || [];
-      const values = source
-        .map(item => {
-          if (!isPortfolio) {
-            if (key === 'Salud') return getDemandProjectHealth(item).label;
-            if (key === 'Nombre del Proyecto') return item['Nombre del Proyecto'] || item['PROYECTO'];
-          } else {
-            if (key === 'Priorizado') {
-              const prioritizedProjectNames = new Set(
-                (data?.trend || []).map(t => String(t['Proyecto'] || '').toLowerCase().trim())
-              );
-              return prioritizedProjectNames.has(String(item['Nombre del Proyecto'] || '').toLowerCase().trim()) ? 'Sí' : 'No';
-            }
-            if (key === 'Salud') return getHealthColor(item).includes('bg-green') ? 'Excelente' : getHealthColor(item).includes('bg-yellow') ? 'En Riesgo' : 'Retraso';
-            if (key === 'Nombre del Proyecto') return item['Nombre del Proyecto'];
-          }
-          return item[key];
-        })
-        .filter(v => v !== null && v !== undefined && v !== '');
-      return Array.from(new Set(values)).sort();
-    };
-
-    const handleFilterClick = (key, e, isPortfolio = false) => {
-      e.stopPropagation();
-      const rect = e.currentTarget.getBoundingClientRect();
-      if (activeFilterMenu?.key === key && activeFilterMenu?.isPortfolio === isPortfolio) {
-        setActiveFilterMenu(null);
-      } else {
-        setActiveFilterMenu({ key, rect, isPortfolio });
-      }
-    };
 
     if (showStrategicDetail && selectedProjectName) {
       const project = data.demand.find(d => (d['Nombre del Proyecto'] || d['PROYECTO']) === selectedProjectName);
@@ -1063,7 +1237,7 @@ export default function App() {
     return (
       <div className="space-y-6">
         {/* Filter indicator for cross-filtering and table filters */}
-        {(demandFilter || Object.keys(tableColumnFilters).length > 0) && (
+        {(demandFilter || tableSearch || Object.values(tableColumnFilters).some(v => v && v !== 'Todos')) && (
           <div className="flex flex-wrap items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
             <Filter className="w-4 h-4 text-blue-600 shrink-0" />
 
@@ -1716,116 +1890,12 @@ export default function App() {
             </table>
           </div>
         </div>
-
-        {/* Filter Dropdown Menu */}
-        {activeFilterMenu && (
-          <div
-            className="fixed z-50 bg-white border border-gray-200 rounded shadow-xl min-w-[160px] max-h-[300px] overflow-y-auto animate-in fade-in zoom-in-95 duration-100"
-            style={{
-              top: activeFilterMenu.rect.bottom + 5,
-              left: Math.min(window.innerWidth - 180, activeFilterMenu.rect.left)
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-2 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-              <span className="text-[9px] font-bold uppercase text-gray-500">Filtrar {activeFilterMenu.key}</span>
-              <button onClick={() => {
-                setTableColumnFilters(prev => {
-                  const next = { ...prev };
-                  delete next[activeFilterMenu.key];
-                  return next;
-                });
-                setActiveFilterMenu(null);
-              }} className="text-[9px] text-blue-600 hover:underline">Limpiar</button>
-            </div>
-            <div className="py-1">
-              <button
-                onClick={() => {
-                  if (activeFilterMenu.isPortfolio) {
-                    setPortfolioColumnFilters(prev => {
-                      const next = { ...prev };
-                      delete next[activeFilterMenu.key];
-                      return next;
-                    });
-                  } else {
-                    setTableColumnFilters(prev => {
-                      const next = { ...prev };
-                      delete next[activeFilterMenu.key];
-                      return next;
-                    });
-                  }
-                  setActiveFilterMenu(null);
-                }}
-                className={cn(
-                  "w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 transition-colors flex items-center justify-between",
-                  activeFilterMenu.isPortfolio
-                    ? (!portfolioColumnFilters[activeFilterMenu.key] || portfolioColumnFilters[activeFilterMenu.key] === 'Todos')
-                    : (!tableColumnFilters[activeFilterMenu.key] || tableColumnFilters[activeFilterMenu.key] === 'Todos')
-                      ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-700"
-                )}
-              >
-                <span>(Todos)</span>
-              </button>
-              {getUniqueValues(activeFilterMenu.key, activeFilterMenu.isPortfolio).map((val, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => {
-                    if (activeFilterMenu.isPortfolio) {
-                      setPortfolioColumnFilters(prev => ({ ...prev, [activeFilterMenu.key]: val }));
-                    } else {
-                      setTableColumnFilters(prev => ({ ...prev, [activeFilterMenu.key]: val }));
-                    }
-                    setActiveFilterMenu(null);
-                  }}
-                  className={cn(
-                    "w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 transition-colors flex items-center justify-between",
-                    (activeFilterMenu.isPortfolio ? portfolioColumnFilters[activeFilterMenu.key] : tableColumnFilters[activeFilterMenu.key]) === val ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-700"
-                  )}
-                >
-                  <span className="truncate">{val}</span>
-                  {(activeFilterMenu.isPortfolio ? portfolioColumnFilters[activeFilterMenu.key] : tableColumnFilters[activeFilterMenu.key]) === val && <CheckCircle2 className="w-3 h-3" />}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     );
   };
 
   const renderDemand2Dashboard = () => {
     const stats = calculateDemandStats(filteredDemand2);
-
-    const getUniqueValues = (key, isPortfolio = false) => {
-      const source = isPortfolio ? data?.portfolio || [] : demand2Data || [];
-      const values = source
-        .map(item => {
-          if (!isPortfolio) {
-            if (key === 'Salud') return getDemandProjectHealth(item).label;
-            if (key === 'Nombre del Proyecto') return item['Nombre del Proyecto'] || item['PROYECTO'];
-          } else {
-            if (key === 'Priorizado') {
-              const prioritizedProjectNames = new Set(
-                (data?.trend || []).map(t => String(t['Proyecto'] || '').toLowerCase().trim())
-              );
-              return prioritizedProjectNames.has(String(item['Nombre del Proyecto'] || '').toLowerCase().trim()) ? 'Sí' : 'No';
-            }
-          }
-          return item[key];
-        })
-        .filter(v => v !== null && v !== undefined && v !== '');
-      return Array.from(new Set(values)).sort();
-    };
-
-    const handleFilterClick = (key, e, isPortfolio = false) => {
-      e.stopPropagation();
-      const rect = e.currentTarget.getBoundingClientRect();
-      if (activeFilterMenu?.key === key && activeFilterMenu?.isPortfolio === isPortfolio) {
-        setActiveFilterMenu(null);
-      } else {
-        setActiveFilterMenu({ key, rect, isPortfolio });
-      }
-    };
 
     if (showStrategicDetail && selectedProjectName) {
       const project = demand2Data.find(d => (d['Nombre del Proyecto'] || d['PROYECTO']) === selectedProjectName);
@@ -1993,7 +2063,7 @@ export default function App() {
     return (
       <div className="space-y-6">
         {/* Filter indicator for cross-filtering and table filters */}
-        {(demandFilter || Object.keys(tableColumnFilters).length > 0) && (
+        {(demandFilter || tableSearch || Object.values(tableColumnFilters).some(v => v && v !== 'Todos')) && (
           <div className="flex flex-wrap items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
             <Filter className="w-4 h-4 text-blue-600 shrink-0" />
 
@@ -2646,79 +2716,6 @@ export default function App() {
             </table>
           </div>
         </div>
-
-        {/* Filter Dropdown Menu */}
-        {activeFilterMenu && (
-          <div
-            className="fixed z-50 bg-white border border-gray-200 rounded shadow-xl min-w-[160px] max-h-[300px] overflow-y-auto animate-in fade-in zoom-in-95 duration-100"
-            style={{
-              top: activeFilterMenu.rect.bottom + 5,
-              left: Math.min(window.innerWidth - 180, activeFilterMenu.rect.left)
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-2 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-              <span className="text-[9px] font-bold uppercase text-gray-500">Filtrar {activeFilterMenu.key}</span>
-              <button onClick={() => {
-                setTableColumnFilters(prev => {
-                  const next = { ...prev };
-                  delete next[activeFilterMenu.key];
-                  return next;
-                });
-                setActiveFilterMenu(null);
-              }} className="text-[9px] text-blue-600 hover:underline">Limpiar</button>
-            </div>
-            <div className="py-1">
-              <button
-                onClick={() => {
-                  if (activeFilterMenu.isPortfolio) {
-                    setPortfolioColumnFilters(prev => {
-                      const next = { ...prev };
-                      delete next[activeFilterMenu.key];
-                      return next;
-                    });
-                  } else {
-                    setTableColumnFilters(prev => {
-                      const next = { ...prev };
-                      delete next[activeFilterMenu.key];
-                      return next;
-                    });
-                  }
-                  setActiveFilterMenu(null);
-                }}
-                className={cn(
-                  "w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 transition-colors flex items-center justify-between",
-                  activeFilterMenu.isPortfolio
-                    ? (!portfolioColumnFilters[activeFilterMenu.key] || portfolioColumnFilters[activeFilterMenu.key] === 'Todos')
-                    : (!tableColumnFilters[activeFilterMenu.key] || tableColumnFilters[activeFilterMenu.key] === 'Todos')
-                      ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-700"
-                )}
-              >
-                <span>(Todos)</span>
-              </button>
-              {getUniqueValues(activeFilterMenu.key, activeFilterMenu.isPortfolio).map((val, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => {
-                    if (activeFilterMenu.isPortfolio) {
-                      setPortfolioColumnFilters(prev => ({ ...prev, [activeFilterMenu.key]: val }));
-                    } else {
-                      setTableColumnFilters(prev => ({ ...prev, [activeFilterMenu.key]: val }));
-                    }
-                    setActiveFilterMenu(null);
-                  }}
-                  className={cn(
-                    "w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 transition-colors flex items-center justify-between",
-                    (activeFilterMenu.isPortfolio ? portfolioColumnFilters[activeFilterMenu.key] : tableColumnFilters[activeFilterMenu.key]) === val ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-700"
-                  )}
-                >
-                  <span className="truncate">{val}</span>
-                  {(activeFilterMenu.isPortfolio ? portfolioColumnFilters[activeFilterMenu.key] : tableColumnFilters[activeFilterMenu.key]) === val && <CheckCircle2 className="w-3 h-3" />}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     );
   };
@@ -2839,6 +2836,7 @@ export default function App() {
           </div>
         ) : (
           <>
+            {(portfolioFilter || portfolioSearch || Object.values(portfolioColumnFilters).some(v => v && v !== 'Todos')) && (
               <div className="flex flex-wrap items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded shadow-sm animate-in fade-in slide-in-from-top-2 duration-300 md:col-span-full mb-4">
                 <Filter className="w-4 h-4 text-blue-600 shrink-0" />
                 {portfolioFilter && (
@@ -2850,19 +2848,19 @@ export default function App() {
                     </button>
                   </div>
                 )}
-                
+
                 {Object.entries(portfolioColumnFilters).map(([key, value]) => {
                   if (!value || value === 'Todos') return null;
                   return (
                     <div key={key} className="flex items-center bg-white border border-blue-100 rounded-full px-2 py-0.5 text-[10px] font-bold text-blue-800 shadow-sm">
                       <span className="text-blue-400 mr-1 uppercase">{key}:</span>
                       <span className="uppercase">{value}</span>
-                      <button 
+                      <button
                         onClick={() => setPortfolioColumnFilters(prev => {
                           const next = { ...prev };
                           delete next[key];
                           return next;
-                        })} 
+                        })}
                         className="ml-1 hover:text-red-500"
                       >
                         <X className="w-3 h-3" />
@@ -2881,28 +2879,26 @@ export default function App() {
                   </div>
                 )}
 
-                {(portfolioFilter || portfolioSearch || Object.values(portfolioColumnFilters).some(v => v && v !== 'Todos')) && (
-                  <button
-                    onClick={() => {
-                      setPortfolioFilter(null);
-                      setPortfolioSearch('');
-                      setPortfolioColumnFilters({});
-                    }}
-                    className="text-[10px] font-bold text-blue-600 hover:text-blue-800 underline ml-2"
-                  >
-                    Limpiar todo
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    setPortfolioFilter(null);
+                    setPortfolioSearch('');
+                    setPortfolioColumnFilters({});
+                  }}
+                  className="text-[10px] font-bold text-blue-600 hover:text-blue-800 underline ml-2"
+                >
+                  Limpiar todo
+                </button>
               </div>
             )}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <KPICard label="Total Proyectos" value={stats.total} />
-            <KPICard label="En Curso" value={stats.enEjecucion} colorClass="text-blue-600" />
-            <KPICard label="Implementado" value={stats.implementado} colorClass="text-green-600" />
-            <KPICard label="No Iniciado" value={stats.noIniciado} colorClass="text-gray-500" />
-            <KPICard label="Cerrado" value={stats.cerrado} colorClass="text-purple-600" />
-            <KPICard label="Descartado" value={stats.descartado} colorClass="text-red-600" />
-          </div>
+              <KPICard label="Total Proyectos" value={stats.total} />
+              <KPICard label="En Curso" value={stats.enEjecucion} colorClass="text-blue-600" />
+              <KPICard label="Implementado" value={stats.implementado} colorClass="text-green-600" />
+              <KPICard label="No Iniciado" value={stats.noIniciado} colorClass="text-gray-500" />
+              <KPICard label="Cerrado" value={stats.cerrado} colorClass="text-purple-600" />
+              <KPICard label="Descartado" value={stats.descartado} colorClass="text-red-600" />
+            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white p-6 border border-gray-200 rounded shadow-sm relative">
@@ -2945,9 +2941,9 @@ export default function App() {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                       <XAxis dataKey="name" fontSize={10} />
                       <YAxis domain={[0, 100]} fontSize={10} unit="%" />
-                      <Tooltip 
+                      <Tooltip
                         cursor={{ fill: '#f8fafc' }}
-                        formatter={(value) => [`${value}%`, 'Avance Promedio']} 
+                        formatter={(value) => [`${value}%`, 'Avance Promedio']}
                       />
                       <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={60} />
                     </BarChart>
@@ -2956,145 +2952,145 @@ export default function App() {
               </div>
             </div>
 
-          <div className="bg-white border border-gray-200 rounded shadow-sm overflow-hidden">
-            <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div className="flex flex-col gap-1">
-                <h3 className="text-[10px] font-bold uppercase text-gray-600 tracking-wider">Portafolio P&D - Vista Planeamiento</h3>
-                <span className="text-[9px] bg-gray-200 px-2 py-0.5 rounded text-gray-600 font-bold w-fit">{filteredPortfolio.length} proyectos</span>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Buscar proyecto..."
-                    className="pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded w-64 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    value={portfolioSearch}
-                    onChange={(e) => setPortfolioSearch(e.target.value)}
-                  />
+            <div className="bg-white border border-gray-200 rounded shadow-sm overflow-hidden">
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div className="flex flex-col gap-1">
+                  <h3 className="text-[10px] font-bold uppercase text-gray-600 tracking-wider">Portafolio P&D - Vista Planeamiento</h3>
+                  <span className="text-[9px] bg-gray-200 px-2 py-0.5 rounded text-gray-600 font-bold w-fit">{filteredPortfolio.length} proyectos</span>
                 </div>
 
-                <select
-                  className="text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={portfolioColumnFilters['Priorizado'] || 'Todos'}
-                  onChange={(e) => setPortfolioColumnFilters(prev => ({ ...prev, 'Priorizado': e.target.value }))}
-                >
-                  <option value="Todos">Todos</option>
-                  <option value="Sí">Priorizados</option>
-                  <option value="No">No Priorizados</option>
-                </select>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Buscar proyecto..."
+                      className="pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded w-64 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      value={portfolioSearch}
+                      onChange={(e) => setPortfolioSearch(e.target.value)}
+                    />
+                  </div>
+
+                  <select
+                    className="text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    value={portfolioColumnFilters['Priorizado'] || 'Todos'}
+                    onChange={(e) => setPortfolioColumnFilters(prev => ({ ...prev, 'Priorizado': e.target.value }))}
+                  >
+                    <option value="Todos">Todos</option>
+                    <option value="Sí">Priorizados</option>
+                    <option value="No">No Priorizados</option>
+                  </select>
+                </div>
+              </div>
+              <div className="overflow-x-auto relative">
+                <table className="w-full text-left text-[11px] table-fixed">
+                  <thead>
+                    <tr className="bg-gray-100 text-gray-500 font-bold uppercase border-b border-gray-200">
+                      <th className="px-4 py-3 w-64 group relative">
+                        <div className="flex items-center justify-between">
+                          <span>Proyecto</span>
+                          <button onClick={(e) => handleFilterClick('Nombre del Proyecto', e, true)} className={cn(
+                            "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                            portfolioColumnFilters['Nombre del Proyecto'] ? "text-blue-600" : "text-gray-400"
+                          )}>
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 w-40 group relative">
+                        <div className="flex items-center justify-between">
+                          <span>Gerencia Líder</span>
+                          <button onClick={(e) => handleFilterClick('Gerencia Líder', e, true)} className={cn(
+                            "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                            portfolioColumnFilters['Gerencia Líder'] ? "text-blue-600" : "text-gray-400"
+                          )}>
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 w-32 group relative">
+                        <div className="flex items-center justify-between">
+                          <span>Estado</span>
+                          <button onClick={(e) => handleFilterClick('Estado', e, true)} className={cn(
+                            "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                            portfolioColumnFilters['Estado'] ? "text-blue-600" : "text-gray-400"
+                          )}>
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 w-28 group relative">
+                        <div className="flex items-center justify-between">
+                          <span>Salud</span>
+                          <button onClick={(e) => handleFilterClick('Salud', e, true)} className={cn(
+                            "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                            portfolioColumnFilters['Salud'] ? "text-blue-600" : "text-gray-400"
+                          )}>
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 w-32 text-center">Avance P/R</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {(() => {
+                      const prioritizedProjectNames = new Set(
+                        (data?.trend || []).map(t => String(t['Proyecto'] || '').toLowerCase().trim())
+                      );
+
+                      return filteredPortfolio.map((p, i) => {
+                        const isPrioritized = prioritizedProjectNames.has(String(p['Nombre del Proyecto'] || '').toLowerCase().trim());
+                        const projectHealthLabel = getHealthColor(p).includes('bg-green') ? 'Excelente' : getHealthColor(p).includes('bg-yellow') ? 'En Riesgo' : 'Retraso';
+                        const projectHealthEmoji = getHealthColor(p).includes('bg-green') ? '🟢' : getHealthColor(p).includes('bg-yellow') ? '🟡' : '🔴';
+                        const projectHealthColor = getHealthColor(p).includes('bg-green') ? 'text-green-600' : getHealthColor(p).includes('bg-yellow') ? 'text-amber-600' : 'text-red-600';
+
+                        return (
+                          <tr key={i} className={cn(
+                            "hover:bg-gray-50 transition-colors cursor-pointer border-l-4",
+                            isPrioritized ? "bg-amber-50/70 border-l-amber-400" : "border-l-transparent"
+                          )}
+                            onClick={() => setSelectedProjectName(p['Nombre del Proyecto'])}
+                          >
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                {isPrioritized && <Star className="w-3 h-3 fill-amber-400 text-amber-400 shrink-0" />}
+                                <div className={cn(
+                                  "font-bold leading-tight line-clamp-2",
+                                  isPrioritized ? "text-amber-900" : "text-gray-800"
+                                )}>
+                                  {p['Nombre del Proyecto']}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-gray-600 truncate">{p['Gerencia Líder']}</td>
+                            <td className="px-4 py-3">
+                              <div className="max-w-fit">
+                                <span className={cn(
+                                  "px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border block truncate",
+                                  (p['Estado'] || '').toLowerCase().includes('finalizado') || (p['Estado'] || '').toLowerCase().includes('cerrado') ? "bg-green-50 text-green-700 border-green-100" :
+                                    (p['Estado'] || '').toLowerCase().includes('desarrollo') || (p['Estado'] || '').toLowerCase().includes('ejecución') || (p['Estado'] || '').toLowerCase().includes('curso') ? "bg-blue-50 text-blue-700 border-blue-100" : "bg-gray-50 text-gray-600 border-gray-100"
+                                )} title={p['Estado']}>{p['Estado'] || 'Sin Estado'}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className={cn(
+                                "font-bold text-[9px]",
+                                projectHealthColor
+                              )}>{projectHealthEmoji} {projectHealthLabel}</span>
+                            </td>
+                            <td className="px-4 py-3 text-center whitespace-nowrap">
+                              <div className="font-bold text-gray-700">{formatPercent(p['% Avance Planificado'])}</div>
+                              <div className="text-blue-600 font-bold">{formatPercent(p['% Avance ejecutado'])}</div>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
               </div>
             </div>
-            <div className="overflow-x-auto relative">
-              <table className="w-full text-left text-[11px] table-fixed">
-                <thead>
-                  <tr className="bg-gray-100 text-gray-500 font-bold uppercase border-b border-gray-200">
-                    <th className="px-4 py-3 w-64 group relative">
-                      <div className="flex items-center justify-between">
-                        <span>Proyecto</span>
-                        <button onClick={(e) => handleFilterClick('Nombre del Proyecto', e, true)} className={cn(
-                          "p-0.5 rounded hover:bg-gray-200 transition-colors",
-                          portfolioColumnFilters['Nombre del Proyecto'] ? "text-blue-600" : "text-gray-400"
-                        )}>
-                          <ChevronDown className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 w-40 group relative">
-                      <div className="flex items-center justify-between">
-                        <span>Gerencia Líder</span>
-                        <button onClick={(e) => handleFilterClick('Gerencia Líder', e, true)} className={cn(
-                          "p-0.5 rounded hover:bg-gray-200 transition-colors",
-                          portfolioColumnFilters['Gerencia Líder'] ? "text-blue-600" : "text-gray-400"
-                        )}>
-                          <ChevronDown className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 w-32 group relative">
-                      <div className="flex items-center justify-between">
-                        <span>Estado</span>
-                        <button onClick={(e) => handleFilterClick('Estado', e, true)} className={cn(
-                          "p-0.5 rounded hover:bg-gray-200 transition-colors",
-                          portfolioColumnFilters['Estado'] ? "text-blue-600" : "text-gray-400"
-                        )}>
-                          <ChevronDown className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 w-28 group relative">
-                      <div className="flex items-center justify-between">
-                        <span>Salud</span>
-                        <button onClick={(e) => handleFilterClick('Salud', e, true)} className={cn(
-                          "p-0.5 rounded hover:bg-gray-200 transition-colors",
-                          portfolioColumnFilters['Salud'] ? "text-blue-600" : "text-gray-400"
-                        )}>
-                          <ChevronDown className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 w-32 text-center">Avance P/R</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {(() => {
-                    const prioritizedProjectNames = new Set(
-                      (data?.trend || []).map(t => String(t['Proyecto'] || '').toLowerCase().trim())
-                    );
-
-                    return filteredPortfolio.map((p, i) => {
-                      const isPrioritized = prioritizedProjectNames.has(String(p['Nombre del Proyecto'] || '').toLowerCase().trim());
-                      const projectHealthLabel = getHealthColor(p).includes('bg-green') ? 'Excelente' : getHealthColor(p).includes('bg-yellow') ? 'En Riesgo' : 'Retraso';
-                      const projectHealthEmoji = getHealthColor(p).includes('bg-green') ? '🟢' : getHealthColor(p).includes('bg-yellow') ? '🟡' : '🔴';
-                      const projectHealthColor = getHealthColor(p).includes('bg-green') ? 'text-green-600' : getHealthColor(p).includes('bg-yellow') ? 'text-amber-600' : 'text-red-600';
-
-                      return (
-                        <tr key={i} className={cn(
-                          "hover:bg-gray-50 transition-colors cursor-pointer border-l-4",
-                          isPrioritized ? "bg-amber-50/70 border-l-amber-400" : "border-l-transparent"
-                        )}
-                          onClick={() => setSelectedProjectName(p['Nombre del Proyecto'])}
-                        >
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              {isPrioritized && <Star className="w-3 h-3 fill-amber-400 text-amber-400 shrink-0" />}
-                              <div className={cn(
-                                "font-bold leading-tight line-clamp-2",
-                                isPrioritized ? "text-amber-900" : "text-gray-800"
-                              )}>
-                                {p['Nombre del Proyecto']}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-gray-600 truncate">{p['Gerencia Líder']}</td>
-                          <td className="px-4 py-3">
-                            <div className="max-w-fit">
-                              <span className={cn(
-                                "px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border block truncate",
-                                (p['Estado'] || '').toLowerCase().includes('finalizado') || (p['Estado'] || '').toLowerCase().includes('cerrado') ? "bg-green-50 text-green-700 border-green-100" :
-                                  (p['Estado'] || '').toLowerCase().includes('desarrollo') || (p['Estado'] || '').toLowerCase().includes('ejecución') || (p['Estado'] || '').toLowerCase().includes('curso') ? "bg-blue-50 text-blue-700 border-blue-100" : "bg-gray-50 text-gray-600 border-gray-100"
-                              )} title={p['Estado']}>{p['Estado'] || 'Sin Estado'}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span className={cn(
-                              "font-bold text-[9px]",
-                              projectHealthColor
-                            )}>{projectHealthEmoji} {projectHealthLabel}</span>
-                          </td>
-                          <td className="px-4 py-3 text-center whitespace-nowrap">
-                            <div className="font-bold text-gray-700">{formatPercent(p['% Avance Planificado'])}</div>
-                            <div className="text-blue-600 font-bold">{formatPercent(p['% Avance ejecutado'])}</div>
-                          </td>
-                        </tr>
-                      );
-                    });
-                  })()}
-                </tbody>
-              </table>
-            </div>
-          </div>
           </>
         )}
       </div>
@@ -3105,7 +3101,7 @@ export default function App() {
     return (
       <div className="space-y-6">
         {/* Filters indicator */}
-        {(selectedProjectName || trendFilter) && (
+        {(selectedProjectName || trendFilter || trendTypeFilter || Object.values(trendColumnFilters).some(v => v && v !== 'Todos')) && (
           <div className="flex flex-wrap gap-2 items-center bg-corporate-dark/5 p-3 rounded-lg border border-corporate-dark/10">
             <span className="text-[10px] font-bold text-corporate-dark uppercase tracking-widest mr-2">Filtros Activos:</span>
             {selectedProjectName && (
@@ -3120,8 +3116,32 @@ export default function App() {
                 <button onClick={() => setTrendFilter(null)} className="hover:text-red-300"><X className="w-3 h-3" /></button>
               </div>
             )}
+            {trendTypeFilter && (
+              <div className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
+                <span>Tipo: {trendTypeFilter.type}</span>
+                <button onClick={() => setTrendTypeFilter(null)} className="hover:text-red-300"><X className="w-3 h-3" /></button>
+              </div>
+            )}
+            {Object.entries(trendColumnFilters).map(([key, value]) => {
+              if (!value || value === 'Todos') return null;
+              return (
+                <div key={key} className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
+                  <span>{key}: {value}</span>
+                  <button onClick={() => setTrendColumnFilters(prev => {
+                    const next = { ...prev };
+                    delete next[key];
+                    return next;
+                  })} className="hover:text-red-300"><X className="w-3 h-3" /></button>
+                </div>
+              );
+            })}
             <button
-              onClick={() => { setSelectedProjectName(null); setTrendFilter(null); }}
+              onClick={() => { 
+                setSelectedProjectName(null); 
+                setTrendFilter(null); 
+                setTrendTypeFilter(null); 
+                setTrendColumnFilters({});
+              }}
               className="text-[10px] font-bold text-red-600 hover:text-red-700 uppercase underline ml-auto"
             >
               Limpiar Todo
@@ -3129,7 +3149,7 @@ export default function App() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <KPICard label="Total Proyectos Priorizados" value={trendStats.total} icon={<Star className="w-4 h-4" />} />
           {selectedProjectName ? (() => {
             const matchedProj = data.portfolio?.find(p => p['Nombre del Proyecto'] === selectedProjectName) || data.demand?.find(d => (d['Nombre del Proyecto'] || d['PROYECTO']) === selectedProjectName);
@@ -3141,9 +3161,15 @@ export default function App() {
                 <KPICard label="Líder del Proyecto" value={tProj?.['Líder del Proyecto'] || matchedProj?.['Líder del Proyecto'] || '-'} colorClass="text-gray-600" />
               </>
             );
-          })() : Object.entries(trendStats.counts).slice(0, 3).map(([status, count], i) => (
-            <KPICard key={i} label={status} value={count} colorClass="text-corporate-dark" />
-          ))}
+          })() : (
+            <>
+              <KPICard label="01. No Iniciado" value={trendStats.counts['01. No Iniciado'] || 0} colorClass="text-gray-600" />
+              <KPICard label="02. En Curso" value={trendStats.counts['02. En Curso'] || 0} colorClass="text-blue-600" />
+              <KPICard label="03. Implementado" value={trendStats.counts['03. Implementado'] || 0} colorClass="text-green-600" />
+              <KPICard label="04. Cerrado" value={trendStats.counts['04. Cerrado'] || 0} colorClass="text-purple-600" />
+              <KPICard label="05. Descartado" value={trendStats.counts['05. Descartado'] || 0} colorClass="text-red-600" />
+            </>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -3211,6 +3237,16 @@ export default function App() {
                       paddingAngle={5}
                       dataKey="value"
                       label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
+                      onClick={(data) => {
+                        if (data && data.name) {
+                          if (trendTypeFilter?.type === data.name) {
+                            setTrendTypeFilter(null);
+                          } else {
+                            setTrendTypeFilter({ type: data.name });
+                          }
+                        }
+                      }}
+                      className="cursor-pointer"
                     >
                       {Object.keys(trendStats.typeCounts).map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -3241,9 +3277,39 @@ export default function App() {
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="bg-gray-100 text-gray-500 font-bold uppercase border-b border-gray-200 sticky top-0 z-10">
-                    <th className="px-6 py-3">Proyecto</th>
-                    <th className="px-6 py-3">Dimensión</th>
-                    <th className="px-6 py-3">Estado</th>
+                    <th className="px-6 py-3 group relative">
+                      <div className="flex items-center justify-between">
+                        <span>Proyecto</span>
+                        <button onClick={(e) => handleFilterClick('Proyecto', e, false, true)} className={cn(
+                          "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                          trendColumnFilters['Proyecto'] ? "text-blue-600" : "text-gray-400"
+                        )}>
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </th>
+                    <th className="px-6 py-3 group relative">
+                      <div className="flex items-center justify-between">
+                        <span>Dimensión</span>
+                        <button onClick={(e) => handleFilterClick('Dimensión', e, false, true)} className={cn(
+                          "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                          trendColumnFilters['Dimensión'] ? "text-blue-600" : "text-gray-400"
+                        )}>
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </th>
+                    <th className="px-6 py-3 group relative">
+                      <div className="flex items-center justify-between">
+                        <span>Estado</span>
+                        <button onClick={(e) => handleFilterClick('Estado', e, false, true)} className={cn(
+                          "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                          trendColumnFilters['Estado'] ? "text-blue-600" : "text-gray-400"
+                        )}>
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -3255,6 +3321,43 @@ export default function App() {
                       if (!matchMgmt || !matchDimension || !matchPortfolio) return false;
                       if (selectedProjectName && t['Proyecto'] !== selectedProjectName) return false;
                       if (trendFilter && !Object.keys(t).some(k => k.includes(trendFilter.month))) return false;
+                      
+                      if (trendTypeFilter) {
+                        let type = t['Tipo de Proyecto'];
+                        if (type === "0" || type === 0) {
+                          type = "Otros (0)";
+                        } else if (!type || String(type).trim() === "" || String(type).toLowerCase() === "null") {
+                          type = "Por asignar";
+                        } else {
+                          type = String(type).trim();
+                        }
+                        if (type !== trendTypeFilter.type) return false;
+                      }
+                      
+                      const matchTrendColumnFilters = Object.entries(trendColumnFilters).every(([key, value]) => {
+                        if (!value || value === 'Todos') return true;
+                        if (key === 'Tipo de Proyecto') {
+                          let type = t['Tipo de Proyecto'];
+                          if (type === "0" || type === 0) {
+                            type = "Otros (0)";
+                          } else if (!type || String(type).trim() === "" || String(type).toLowerCase() === "null") {
+                            type = "Por asignar";
+                          } else {
+                            type = String(type).trim();
+                          }
+                          return type === value;
+                        }
+                        
+                        if (value === 'Otros') {
+                          const strVal = String(t[key] || '').trim();
+                          return strVal === '' || strVal === '-' || strVal === '0';
+                        }
+                        
+                        return String(t[key] || '') === String(value);
+                      });
+                      
+                      if (!matchTrendColumnFilters) return false;
+                      
                       return true;
                     })
                     .map((t, i) => (
@@ -3386,6 +3489,7 @@ export default function App() {
     const proyectosData = Array.from(new Set(filteredWeekly.map(w => w['PROYECTO']).filter(Boolean)))
       .map(name => ({
         name: String(name).substring(0, 25) + (String(name).length > 25 ? '...' : ''),
+        fullName: name,
         value: filteredWeekly.filter(w => w['PROYECTO'] === name).length
       })).sort((a, b) => b.value - a.value).slice(0, 10);
 
@@ -3414,6 +3518,41 @@ export default function App() {
 
     return (
       <div className="space-y-6 animate-in fade-in ease-out duration-500">
+        {/* Filter indicator */}
+        {(weeklyChartFilter || Object.values(weeklyColumnFilters).some(v => v && v !== 'Todos')) && (
+          <div className="flex flex-wrap gap-2 items-center bg-corporate-dark/5 p-3 rounded-lg border border-corporate-dark/10">
+            <span className="text-[10px] font-bold text-corporate-dark uppercase tracking-widest mr-2">Filtros Activos:</span>
+            {weeklyChartFilter && (
+              <div className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
+                <span>{weeklyChartFilter.key}: {weeklyChartFilter.value}</span>
+                <button onClick={() => setWeeklyChartFilter(null)} className="hover:text-red-300"><X className="w-3 h-3" /></button>
+              </div>
+            )}
+            {Object.entries(weeklyColumnFilters).map(([key, value]) => {
+              if (!value || value === 'Todos') return null;
+              return (
+                <div key={key} className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
+                  <span>{key}: {value}</span>
+                  <button onClick={() => setWeeklyColumnFilters(prev => {
+                    const next = { ...prev };
+                    delete next[key];
+                    return next;
+                  })} className="hover:text-red-300"><X className="w-3 h-3" /></button>
+                </div>
+              );
+            })}
+            <button
+              onClick={() => { 
+                setWeeklyChartFilter(null);
+                setWeeklyColumnFilters({});
+              }}
+              className="text-[10px] font-bold text-red-600 hover:text-red-700 uppercase underline ml-auto"
+            >
+              Limpiar Todo
+            </button>
+          </div>
+        )}
+
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-800 to-gray-500">
             Seguimiento Semanal Integrado
@@ -3465,7 +3604,21 @@ export default function App() {
             </h3>
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={proyectosData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                <BarChart 
+                  data={proyectosData} 
+                  layout="vertical" 
+                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  onClick={(data, index, event) => {
+                    if (data && data.activePayload && data.activePayload[0]) {
+                      const clickedName = data.activePayload[0].payload.fullName;
+                      if (weeklyChartFilter?.key === 'Proyecto' && weeklyChartFilter?.value === clickedName) {
+                        setWeeklyChartFilter(null);
+                      } else {
+                        setWeeklyChartFilter({ key: 'Proyecto', value: clickedName });
+                      }
+                    }
+                  }}
+                >
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
                   <XAxis type="number" stroke="#9CA3AF" fontSize={11} fontWeight={600} />
                   <YAxis dataKey="name" type="category" width={140} stroke="#4B5563" fontSize={10} fontWeight={600} />
@@ -3473,7 +3626,7 @@ export default function App() {
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                     cursor={{ fill: '#F3F4F6' }}
                   />
-                  <Bar dataKey="value" fill="#a5000d" radius={[0, 4, 4, 0]} barSize={20} />
+                  <Bar dataKey="value" fill="#a5000d" radius={[0, 4, 4, 0]} barSize={20} className="cursor-pointer" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -3495,6 +3648,16 @@ export default function App() {
                     outerRadius={100}
                     paddingAngle={5}
                     dataKey="value"
+                    onClick={(data, index, event) => {
+                      if (data && data.name) {
+                        if (weeklyChartFilter?.key === 'Estado' && weeklyChartFilter?.value === data.name) {
+                          setWeeklyChartFilter(null);
+                        } else {
+                          setWeeklyChartFilter({ key: 'Estado', value: data.name });
+                        }
+                      }
+                    }}
+                    className="cursor-pointer"
                   >
                     {estadoData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS_MAP[entry.name] || '#9ca3af'} />
@@ -3529,12 +3692,72 @@ export default function App() {
             <table className="w-full text-left text-xs mb-0">
               <thead className="bg-gray-50/80 text-gray-500 uppercase font-black tracking-wider border-b border-gray-100">
                 <tr>
-                  <th className="px-6 py-4">Proyecto</th>
-                  <th className="px-6 py-4">Cód. Plant</th>
-                  <th className="px-6 py-4">Pendiente</th>
-                  <th className="px-6 py-4">Responsable / Líder</th>
-                  <th className="px-6 py-4">F. Compromiso</th>
-                  <th className="px-6 py-4">Estado</th>
+                  <th className="px-6 py-4 group relative">
+                    <div className="flex items-center justify-between">
+                      <span>Proyecto</span>
+                      <button onClick={(e) => handleFilterClick('PROYECTO', e, false, false, true)} className={cn(
+                        "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                        weeklyColumnFilters['PROYECTO'] ? "text-blue-600" : "text-gray-400"
+                      )}>
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 group relative">
+                    <div className="flex items-center justify-between">
+                      <span>Cód. Plant</span>
+                      <button onClick={(e) => handleFilterClick('CÓDIGO DE PLANEAMIENTO', e, false, false, true)} className={cn(
+                        "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                        weeklyColumnFilters['CÓDIGO DE PLANEAMIENTO'] ? "text-blue-600" : "text-gray-400"
+                      )}>
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 group relative">
+                    <div className="flex items-center justify-between">
+                      <span>Pendiente</span>
+                      <button onClick={(e) => handleFilterClick('Pendientes', e, false, false, true)} className={cn(
+                        "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                        weeklyColumnFilters['Pendientes'] ? "text-blue-600" : "text-gray-400"
+                      )}>
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 group relative">
+                    <div className="flex items-center justify-between">
+                      <span>Responsable / Líder</span>
+                      <button onClick={(e) => handleFilterClick('Responsable', e, false, false, true)} className={cn(
+                        "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                        weeklyColumnFilters['Responsable'] ? "text-blue-600" : "text-gray-400"
+                      )}>
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 group relative">
+                    <div className="flex items-center justify-between">
+                      <span>F. Compromiso</span>
+                      <button onClick={(e) => handleFilterClick('FECHA COMPROMISO', e, false, false, true)} className={cn(
+                        "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                        weeklyColumnFilters['FECHA COMPROMISO'] ? "text-blue-600" : "text-gray-400"
+                      )}>
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 group relative">
+                    <div className="flex items-center justify-between">
+                      <span>Estado</span>
+                      <button onClick={(e) => handleFilterClick('Estado', e, false, false, true)} className={cn(
+                        "p-0.5 rounded hover:bg-gray-200 transition-colors",
+                        weeklyColumnFilters['Estado'] ? "text-blue-600" : "text-gray-400"
+                      )}>
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -3632,7 +3855,7 @@ export default function App() {
             <label className="bg-[#a5000d] border border-white hover:bg-white hover:text-white px-4 py-2 rounded font-bold text-xs flex items-center gap-2 cursor-pointer transition-colors shadow-lg">
               <Upload className="w-4 h-4" />
               <span>SUBIR DEMANDA TI</span>
-              <input type="file" accept=".xlsx, .xls" onChange={handleDemand2Upload} className="hidden" />
+              <input type="file" accept=".xlsx, .xls, .xlsm" onChange={handleDemand2Upload} className="hidden" />
             </label>
           </div>
         </div>
@@ -3781,6 +4004,119 @@ export default function App() {
           {activeTab === 'demand2' && renderDemand2Dashboard()}
         </div>
       </main>
+
+      {/* Filter Dropdown Menu */}
+      {activeFilterMenu && (
+        <div
+          className="fixed z-50 bg-white border border-gray-200 rounded shadow-xl min-w-[160px] max-h-[300px] overflow-y-auto animate-in fade-in zoom-in-95 duration-100"
+          style={{
+            top: activeFilterMenu.rect.bottom + 5,
+            left: Math.min(window.innerWidth - 180, activeFilterMenu.rect.left)
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="p-2 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+            <span className="text-[9px] font-bold uppercase text-gray-500">Filtrar {activeFilterMenu.key}</span>
+            <button onClick={() => {
+              if (activeFilterMenu.isPortfolio) {
+                setPortfolioColumnFilters(prev => {
+                  const next = { ...prev };
+                  delete next[activeFilterMenu.key];
+                  return next;
+                });
+              } else if (activeFilterMenu.isTrend) {
+                setTrendColumnFilters(prev => {
+                  const next = { ...prev };
+                  delete next[activeFilterMenu.key];
+                  return next;
+                });
+              } else if (activeFilterMenu.isWeekly) {
+                setWeeklyColumnFilters(prev => {
+                  const next = { ...prev };
+                  delete next[activeFilterMenu.key];
+                  return next;
+                });
+              } else {
+                setTableColumnFilters(prev => {
+                  const next = { ...prev };
+                  delete next[activeFilterMenu.key];
+                  return next;
+                });
+              }
+              setActiveFilterMenu(null);
+            }} className="text-[9px] text-blue-600 hover:underline">Limpiar</button>
+          </div>
+          <div className="py-1">
+            <button
+              onClick={() => {
+                if (activeFilterMenu.isPortfolio) {
+                  setPortfolioColumnFilters(prev => {
+                    const next = { ...prev };
+                    delete next[activeFilterMenu.key];
+                    return next;
+                  });
+                } else if (activeFilterMenu.isTrend) {
+                  setTrendColumnFilters(prev => {
+                    const next = { ...prev };
+                    delete next[activeFilterMenu.key];
+                    return next;
+                  });
+                } else if (activeFilterMenu.isWeekly) {
+                  setWeeklyColumnFilters(prev => {
+                    const next = { ...prev };
+                    delete next[activeFilterMenu.key];
+                    return next;
+                  });
+                } else {
+                  setTableColumnFilters(prev => {
+                    const next = { ...prev };
+                    delete next[activeFilterMenu.key];
+                    return next;
+                  });
+                }
+                setActiveFilterMenu(null);
+              }}
+              className={cn(
+                "w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 transition-colors flex items-center justify-between",
+                activeFilterMenu.isPortfolio
+                  ? (!portfolioColumnFilters[activeFilterMenu.key] || portfolioColumnFilters[activeFilterMenu.key] === 'Todos')
+                  : activeFilterMenu.isTrend
+                  ? (!trendColumnFilters[activeFilterMenu.key] || trendColumnFilters[activeFilterMenu.key] === 'Todos')
+                  : activeFilterMenu.isWeekly
+                  ? (!weeklyColumnFilters[activeFilterMenu.key] || weeklyColumnFilters[activeFilterMenu.key] === 'Todos')
+                  : (!tableColumnFilters[activeFilterMenu.key] || tableColumnFilters[activeFilterMenu.key] === 'Todos')
+                    ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-700"
+              )}
+            >
+              <span>(Todos)</span>
+            </button>
+            {getUniqueValues(activeFilterMenu.key, activeFilterMenu.isPortfolio, activeFilterMenu.isTrend, activeFilterMenu.isWeekly).map((val, idx) => (
+              <button
+                key={idx}
+                onClick={() => {
+                  if (activeFilterMenu.isPortfolio) {
+                    setPortfolioColumnFilters(prev => ({ ...prev, [activeFilterMenu.key]: val }));
+                  } else if (activeFilterMenu.isTrend) {
+                    setTrendColumnFilters(prev => ({ ...prev, [activeFilterMenu.key]: val }));
+                  } else if (activeFilterMenu.isWeekly) {
+                    setWeeklyColumnFilters(prev => ({ ...prev, [activeFilterMenu.key]: val }));
+                  } else {
+                    setTableColumnFilters(prev => ({ ...prev, [activeFilterMenu.key]: val }));
+                  }
+                  setActiveFilterMenu(null);
+                }}
+                className={cn(
+                  "w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 transition-colors flex items-center justify-between",
+                  (activeFilterMenu.isPortfolio ? portfolioColumnFilters[activeFilterMenu.key] : activeFilterMenu.isTrend ? trendColumnFilters[activeFilterMenu.key] : activeFilterMenu.isWeekly ? weeklyColumnFilters[activeFilterMenu.key] : tableColumnFilters[activeFilterMenu.key]) === val ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-700"
+                )}
+              >
+                <span className="truncate">{val}</span>
+                {(activeFilterMenu.isPortfolio ? portfolioColumnFilters[activeFilterMenu.key] : activeFilterMenu.isTrend ? trendColumnFilters[activeFilterMenu.key] : activeFilterMenu.isWeekly ? weeklyColumnFilters[activeFilterMenu.key] : tableColumnFilters[activeFilterMenu.key]) === val && <CheckCircle2 className="w-3 h-3" />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
