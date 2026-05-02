@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -239,7 +239,7 @@ const COLORS = ['#1e3a5f', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'
 function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor, pctStr, indicadorInfo }) {
   const [expanded, setExpanded] = React.useState(() => {
     const s = new Set();
-    schedule.forEach((_, i) => s.add(i)); // all expanded by default
+    schedule.forEach((_, i) => s.add(i));
     return s;
   });
   const [expandedEtapas, setExpandedEtapas] = React.useState(() => {
@@ -267,14 +267,65 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
   const COL_W = 34; // px per month column
   const hasGantt = allGanttCols.length > 0;
 
-  // Fixed left columns
+  const minDate = hasGantt ? new Date(allGanttCols[0].year, allGanttCols[0].month, 1) : null;
+  const maxDate = hasGantt ? new Date(allGanttCols[allGanttCols.length - 1].year, allGanttCols[allGanttCols.length - 1].month + 1, 0) : null;
+  const totalMs = hasGantt ? (maxDate.getTime() - minDate.getTime()) : 1;
+
+  const toNum = (v) => {
+    const n = typeof v === 'number' ? v : parseFloat(v);
+    return isNaN(n) ? null : n;
+  };
+
+  const renderBar = (row, height) => {
+    if (!row.fechaInicio || !row.fechaFin || !minDate) return null;
+    const start = new Date(row.fechaInicio);
+    const end = new Date(row.fechaFin);
+    if (isNaN(start) || isNaN(end) || end < start) return null;
+    
+    const leftPct = ((start.getTime() - minDate.getTime()) / totalMs) * 100;
+    const widthPct = ((end.getTime() - start.getTime()) / totalMs) * 100;
+    
+    if (leftPct > 100 || leftPct + widthPct < 0) return null;
+    const l = Math.max(0, leftPct);
+    const r = Math.min(100, leftPct + widthPct);
+    const w = r - l;
+
+    const plan = toNum(row.planPct);
+    const exec = toNum(row.execPct);
+    const planF = plan !== null ? (plan <= 1.01 ? plan : plan / 100) : 0;
+    const execF = exec !== null ? (exec <= 1.01 ? exec : exec / 100) : 0;
+
+    const minW = w < 0.5 ? 0.5 : w; // ensure min width for very short tasks
+
+    return (
+      <div style={{ position: 'absolute', left: `${l}%`, width: `${minW}%`, minWidth: '4px', height: '100%', top: 0, display: 'flex', alignItems: 'center', zIndex: 5 }}>
+        
+        {row.fechaInicioStr !== row.fechaFinStr && (
+          <span style={{ position: 'absolute', right: '100%', marginRight: '6px', fontSize: '9px', color: '#4b5563', fontWeight: 600, whiteSpace: 'nowrap' }}>
+            {row.fechaInicioStr}
+          </span>
+        )}
+
+        <div style={{ position: 'relative', height: '14px', width: '100%', backgroundColor: '#d1d5db', borderRadius: '4px', overflow: 'hidden', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.1)' }}>
+          <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${Math.min(100, planF * 100)}%`, backgroundColor: '#86efac', zIndex: 1 }} />
+          <div style={{ position: 'absolute', left: 0, top: '25%', height: '50%', width: `${Math.min(100, execF * 100)}%`, backgroundColor: '#16a34a', zIndex: 2, borderRadius: '0 4px 4px 0' }} />
+        </div>
+
+        <span style={{ position: 'absolute', left: '100%', marginLeft: '6px', fontSize: '9px', color: '#4b5563', fontWeight: 600, whiteSpace: 'nowrap' }}>
+          {row.fechaFinStr}
+        </span>
+
+      </div>
+    );
+  };
+
   const LEFT_COLS = [
-    { label: 'Indicador', w: 90 },
-    { label: 'Gerencia',  w: 110 },
-    { label: '% Plan',    w: 56 },
-    { label: '% Real',    w: 56 },
-    { label: 'F. Inicio', w: 78 },
-    { label: 'F. Fin',    w: 78 },
+    { label: 'Indicador', w: 90, left: 210 },
+    { label: 'Gerencia',  w: 110, left: 300 },
+    { label: '% Plan',    w: 56, left: 410 },
+    { label: '% Real',    w: 56, left: 466 },
+    { label: 'F. Inicio', w: 78, left: 522 },
+    { label: 'F. Fin',    w: 78, left: 600 },
   ];
   const NAME_W = 210;
   const totalW = NAME_W + LEFT_COLS.reduce((a, c) => a + c.w, 0) + allGanttCols.length * COL_W;
@@ -291,17 +342,16 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
   });
 
   return (
-    <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh' }}>
+    <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
       <table style={{ borderCollapse: 'collapse', minWidth: totalW, tableLayout: 'fixed' }}>
         <thead style={{ position: 'sticky', top: 0, zIndex: 20 }}>
-          {/* Year row */}
           {Object.keys(yearGroups).length > 0 && (
             <tr style={{ backgroundColor: '#1e3a5f', color: 'white' }}>
               <th style={{ ...thStyle(NAME_W), textAlign: 'left', position: 'sticky', left: 0, zIndex: 30, backgroundColor: '#1e3a5f' }}>
                 Proyecto / Etapa / Actividad
               </th>
               {LEFT_COLS.map((c, i) => (
-                <th key={i} style={thStyle(c.w)}>{c.label}</th>
+                <th key={i} style={{ ...thStyle(c.w), position: 'sticky', left: c.left, zIndex: 30, backgroundColor: '#1e3a5f' }}>{c.label}</th>
               ))}
               {Object.entries(yearGroups).map(([year, cols]) => (
                 <th key={year} colSpan={cols.length} style={{ ...thStyle(cols.length * COL_W), borderRight: '2px solid #2d4f7a' }}>
@@ -310,31 +360,30 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
               ))}
             </tr>
           )}
-          {/* Month row */}
           <tr style={{ backgroundColor: '#2d4f7a', color: 'white' }}>
             <th style={{ ...thStyle(NAME_W), textAlign: 'left', position: 'sticky', left: 0, zIndex: 30, backgroundColor: '#2d4f7a' }} />
-            {LEFT_COLS.map((c, i) => <th key={i} style={thStyle(c.w)} />)}
+            {LEFT_COLS.map((c, i) => <th key={i} style={{ ...thStyle(c.w), position: 'sticky', left: c.left, zIndex: 30, backgroundColor: '#2d4f7a' }} />)}
             {allGanttCols.map((col, i) => (
-              <th key={i} style={{ ...thStyle(COL_W), fontSize: '8px', padding: '4px 2px' }}>
+              <th key={i} style={{ ...thStyle(COL_W), fontSize: '8px', padding: '4px 2px', borderRight: '1px solid #475569' }}>
                 {MONTH_ABBR[col.month] || col.label}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody style={{ backgroundColor: '#ffffff' }}>
           {schedule.map((project, pi) => {
             const ic = indicadorInfo(project.indicador);
             const isExpanded = expanded.has(pi);
             const hasChildren = project.etapas.length > 0;
+            const rowBg = '#f8fafc';
 
             return (
               <React.Fragment key={pi}>
-                {/* ── PROJECT ROW ── */}
                 <tr
-                  style={{ backgroundColor: '#f1f5f9', borderBottom: '1px solid #cbd5e1', cursor: hasChildren ? 'pointer' : 'default' }}
+                  style={{ cursor: hasChildren ? 'pointer' : 'default', height: 48 }}
                   onClick={() => hasChildren && toggleProject(pi)}
                 >
-                  <td style={{ ...tdStyle(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: '#f1f5f9', fontWeight: 700, color: '#1e3a5f' }}>
+                  <td style={{ ...tdStyle(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: rowBg, fontWeight: 700, color: '#1e3a5f', borderBottom: '1px solid #cbd5e1' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                       {hasChildren && (
                         <span style={{ fontSize: 10, color: '#64748b', flexShrink: 0, width: 12 }}>
@@ -346,38 +395,44 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
                       </span>
                     </div>
                   </td>
-                  <td style={{ ...tdStyle(LEFT_COLS[0].w), textAlign: 'center' }}>
+                  <td style={{ ...tdStyle(LEFT_COLS[0].w), textAlign: 'center', position: 'sticky', left: LEFT_COLS[0].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1' }}>
                     <span className={cn('px-1.5 py-0.5 rounded border font-bold', ic.badge)} style={{ fontSize: 8, whiteSpace: 'nowrap' }}>
                       {ic.label}
                     </span>
                   </td>
-                  <td style={{ ...tdStyle(LEFT_COLS[1].w), color: '#4b5563' }} title={project.gerencia}>{project.gerencia || '-'}</td>
-                  <td style={{ ...tdStyle(LEFT_COLS[2].w), textAlign: 'center', fontWeight: 700, color: '#1e3a5f' }}>{pctStr(project.planPct)}</td>
-                  <td style={{ ...tdStyle(LEFT_COLS[3].w), textAlign: 'center', fontWeight: 700, color: '#15803d' }}>{pctStr(project.execPct)}</td>
-                  <td style={{ ...tdStyle(LEFT_COLS[4].w), textAlign: 'center', color: '#6b7280', fontSize: 9 }}>{project.fechaInicioStr || '-'}</td>
-                  <td style={{ ...tdStyle(LEFT_COLS[5].w), textAlign: 'center', color: '#6b7280', fontSize: 9 }}>{project.fechaFinStr || '-'}</td>
-                  {hasGantt && allGanttCols.map((col, ci) => {
-                    const bg = ganttColor(project, col.year, col.month);
-                    return <td key={ci} style={{ minWidth: COL_W, width: COL_W, height: 30, padding: 0, borderRight: '1px solid #e2e8f0', backgroundColor: bg || 'transparent' }} />;
-                  })}
+                  <td style={{ ...tdStyle(LEFT_COLS[1].w), color: '#4b5563', position: 'sticky', left: LEFT_COLS[1].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1' }} title={project.gerencia}>{project.gerencia || '-'}</td>
+                  <td style={{ ...tdStyle(LEFT_COLS[2].w), textAlign: 'center', fontWeight: 700, color: '#1e3a5f', position: 'sticky', left: LEFT_COLS[2].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1' }}>{pctStr(project.planPct)}</td>
+                  <td style={{ ...tdStyle(LEFT_COLS[3].w), textAlign: 'center', fontWeight: 700, color: '#15803d', position: 'sticky', left: LEFT_COLS[3].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1' }}>{pctStr(project.execPct)}</td>
+                  <td style={{ ...tdStyle(LEFT_COLS[4].w), textAlign: 'center', color: '#6b7280', fontSize: 9, position: 'sticky', left: LEFT_COLS[4].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1' }}>{project.fechaInicioStr || '-'}</td>
+                  <td style={{ ...tdStyle(LEFT_COLS[5].w), textAlign: 'center', color: '#6b7280', fontSize: 9, position: 'sticky', left: LEFT_COLS[5].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1' }}>{project.fechaFinStr || '-'}</td>
+                  
+                  {hasGantt && (
+                    <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, width: allGanttCols.length * COL_W, backgroundColor: 'transparent', borderBottom: '1px solid #cbd5e1' }}>
+                      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', pointerEvents: 'none' }}>
+                        {allGanttCols.map((_, i) => (
+                          <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: '1px dashed #cbd5e1', opacity: 0.5 }} />
+                        ))}
+                      </div>
+                      {renderBar(project, 48)}
+                    </td>
+                  )}
                 </tr>
 
-                {/* ── ETAPA + ACTIVIDAD ROWS (when expanded) ── */}
                 {isExpanded && project.etapas.map((etapa, ei) => {
                   const etapaKey = `${pi}-${ei}`;
                   const etapaExpanded = expandedEtapas.has(etapaKey);
                   const hasActs = etapa.actividades && etapa.actividades.length > 0;
-                  const showEtapaRow = !!etapa.nombre; // hide synthetic empty-name etapas
+                  const showEtapaRow = !!etapa.nombre;
+                  const rowBg = '#ffffff';
 
                   return (
                     <React.Fragment key={etapaKey}>
-                      {/* ETAPA ROW */}
                       {showEtapaRow && (
                         <tr
-                          style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', cursor: hasActs ? 'pointer' : 'default' }}
+                          style={{ cursor: hasActs ? 'pointer' : 'default', height: 44 }}
                           onClick={() => hasActs && toggleEtapa(etapaKey)}
                         >
-                          <td style={{ ...tdStyle(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: '#f8fafc', paddingLeft: 24 }}>
+                          <td style={{ ...tdStyle(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: rowBg, paddingLeft: 24, borderBottom: '1px solid #e2e8f0' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                               {hasActs && (
                                 <span style={{ fontSize: 9, color: '#94a3b8', flexShrink: 0, width: 10 }}>
@@ -390,23 +445,31 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
                               </span>
                             </div>
                           </td>
-                          <td style={tdStyle(LEFT_COLS[0].w)} />
-                          <td style={tdStyle(LEFT_COLS[1].w)} />
-                          <td style={{ ...tdStyle(LEFT_COLS[2].w), textAlign: 'center', fontWeight: 600, color: '#1e3a5f', fontSize: 9 }}>{pctStr(etapa.planPct)}</td>
-                          <td style={{ ...tdStyle(LEFT_COLS[3].w), textAlign: 'center', fontWeight: 600, color: '#15803d', fontSize: 9 }}>{pctStr(etapa.execPct)}</td>
-                          <td style={{ ...tdStyle(LEFT_COLS[4].w), textAlign: 'center', color: '#9ca3af', fontSize: 9 }}>{etapa.fechaInicioStr || '-'}</td>
-                          <td style={{ ...tdStyle(LEFT_COLS[5].w), textAlign: 'center', color: '#9ca3af', fontSize: 9 }}>{etapa.fechaFinStr || '-'}</td>
-                          {hasGantt && allGanttCols.map((col, ci) => {
-                            const bg = ganttColor(etapa, col.year, col.month);
-                            return <td key={ci} style={{ minWidth: COL_W, width: COL_W, height: 26, padding: 0, borderRight: '1px solid #f1f5f9', backgroundColor: bg || 'transparent' }} />;
-                          })}
+                          <td style={{ ...tdStyle(LEFT_COLS[0].w), position: 'sticky', left: LEFT_COLS[0].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #e2e8f0' }} />
+                          <td style={{ ...tdStyle(LEFT_COLS[1].w), position: 'sticky', left: LEFT_COLS[1].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #e2e8f0' }} />
+                          <td style={{ ...tdStyle(LEFT_COLS[2].w), textAlign: 'center', fontWeight: 600, color: '#1e3a5f', fontSize: 9, position: 'sticky', left: LEFT_COLS[2].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #e2e8f0' }}>{pctStr(etapa.planPct)}</td>
+                          <td style={{ ...tdStyle(LEFT_COLS[3].w), textAlign: 'center', fontWeight: 600, color: '#15803d', fontSize: 9, position: 'sticky', left: LEFT_COLS[3].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #e2e8f0' }}>{pctStr(etapa.execPct)}</td>
+                          <td style={{ ...tdStyle(LEFT_COLS[4].w), textAlign: 'center', color: '#9ca3af', fontSize: 9, position: 'sticky', left: LEFT_COLS[4].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #e2e8f0' }}>{etapa.fechaInicioStr || '-'}</td>
+                          <td style={{ ...tdStyle(LEFT_COLS[5].w), textAlign: 'center', color: '#9ca3af', fontSize: 9, position: 'sticky', left: LEFT_COLS[5].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #e2e8f0' }}>{etapa.fechaFinStr || '-'}</td>
+                          
+                          {hasGantt && (
+                            <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, width: allGanttCols.length * COL_W, backgroundColor: 'transparent', borderBottom: '1px solid #e2e8f0' }}>
+                              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', pointerEvents: 'none' }}>
+                                {allGanttCols.map((_, i) => (
+                                  <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: '1px dashed #cbd5e1', opacity: 0.5 }} />
+                                ))}
+                              </div>
+                              {renderBar(etapa, 44)}
+                            </td>
+                          )}
                         </tr>
                       )}
 
-                      {/* ACTIVIDAD ROWS */}
-                      {(etapaExpanded || !showEtapaRow) && hasActs && etapa.actividades.map((act, ai) => (
-                        <tr key={`${etapaKey}-${ai}`} style={{ backgroundColor: 'white', borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ ...tdStyle(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: 'white', paddingLeft: showEtapaRow ? 44 : 28 }}>
+                      {(etapaExpanded || !showEtapaRow) && hasActs && etapa.actividades.map((act, ai) => {
+                        const actBg = '#ffffff';
+                        return (
+                        <tr key={`${etapaKey}-${ai}`} style={{ height: 40 }}>
+                          <td style={{ ...tdStyle(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: actBg, paddingLeft: showEtapaRow ? 44 : 28, borderBottom: '1px solid #f1f5f9' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                               <div style={{ width: 4, height: 4, borderRadius: '50%', backgroundColor: '#cbd5e1', flexShrink: 0 }} />
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#6b7280', fontSize: 9 }} title={act.nombre}>
@@ -414,18 +477,25 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
                               </span>
                             </div>
                           </td>
-                          <td style={tdStyle(LEFT_COLS[0].w)} />
-                          <td style={tdStyle(LEFT_COLS[1].w)} />
-                          <td style={{ ...tdStyle(LEFT_COLS[2].w), textAlign: 'center', color: '#1e3a5f', fontSize: 9 }}>{pctStr(act.planPct)}</td>
-                          <td style={{ ...tdStyle(LEFT_COLS[3].w), textAlign: 'center', color: '#15803d', fontSize: 9 }}>{pctStr(act.execPct)}</td>
-                          <td style={{ ...tdStyle(LEFT_COLS[4].w), textAlign: 'center', color: '#9ca3af', fontSize: 9 }}>{act.fechaInicioStr || '-'}</td>
-                          <td style={{ ...tdStyle(LEFT_COLS[5].w), textAlign: 'center', color: '#9ca3af', fontSize: 9 }}>{act.fechaFinStr || '-'}</td>
-                          {hasGantt && allGanttCols.map((col, ci) => {
-                            const bg = ganttColor(act, col.year, col.month);
-                            return <td key={ci} style={{ minWidth: COL_W, width: COL_W, height: 22, padding: 0, borderRight: '1px solid #f8fafc', backgroundColor: bg || 'transparent' }} />;
-                          })}
+                          <td style={{ ...tdStyle(LEFT_COLS[0].w), position: 'sticky', left: LEFT_COLS[0].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }} />
+                          <td style={{ ...tdStyle(LEFT_COLS[1].w), position: 'sticky', left: LEFT_COLS[1].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }} />
+                          <td style={{ ...tdStyle(LEFT_COLS[2].w), textAlign: 'center', color: '#1e3a5f', fontSize: 9, position: 'sticky', left: LEFT_COLS[2].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }}>{pctStr(act.planPct)}</td>
+                          <td style={{ ...tdStyle(LEFT_COLS[3].w), textAlign: 'center', color: '#15803d', fontSize: 9, position: 'sticky', left: LEFT_COLS[3].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }}>{pctStr(act.execPct)}</td>
+                          <td style={{ ...tdStyle(LEFT_COLS[4].w), textAlign: 'center', color: '#9ca3af', fontSize: 9, position: 'sticky', left: LEFT_COLS[4].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }}>{act.fechaInicioStr || '-'}</td>
+                          <td style={{ ...tdStyle(LEFT_COLS[5].w), textAlign: 'center', color: '#9ca3af', fontSize: 9, position: 'sticky', left: LEFT_COLS[5].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }}>{act.fechaFinStr || '-'}</td>
+                          
+                          {hasGantt && (
+                            <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, width: allGanttCols.length * COL_W, backgroundColor: 'transparent', borderBottom: '1px solid #f1f5f9' }}>
+                              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', pointerEvents: 'none' }}>
+                                {allGanttCols.map((_, i) => (
+                                  <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: '1px dashed #cbd5e1', opacity: 0.5 }} />
+                                ))}
+                              </div>
+                              {renderBar(act, 40)}
+                            </td>
+                          )}
                         </tr>
-                      ))}
+                      )})}
                     </React.Fragment>
                   );
                 })}
@@ -468,6 +538,7 @@ export default function App() {
   const [weeklyChartFilter, setWeeklyChartFilter] = useState(null); // { key: string, value: string }
   const [selectedOpp, setSelectedOpp] = useState(null); // For expanded OPP view
   const [showStrategicDetail, setShowStrategicDetail] = useState(false);
+  const [demand2GerenciaFilter, setDemand2GerenciaFilter] = useState(null);
 
   const getUniqueValues = (key, isPortfolio = false, isTrend = false, isWeekly = false) => {
     let source = [];
@@ -2358,7 +2429,11 @@ export default function App() {
   };
 
   const renderDemand2Dashboard = () => {
-    const schedule = demand2Data?.schedule || [];
+    const fullSchedule = demand2Data?.schedule || [];
+    const schedule = demand2GerenciaFilter 
+      ? fullSchedule.filter(p => (p.gerencia || 'Sin Gerencia') === demand2GerenciaFilter)
+      : fullSchedule;
+      
     const ganttColsRaw = demand2Data?.ganttCols || [];
 
     // Derive gantt cols from schedule if not stored separately
@@ -2481,6 +2556,7 @@ export default function App() {
     });
 
     const gerMap = {};
+    // The chart MUST be filtered so it reflects the click.
     schedule.forEach(p => {
       const g = p.gerencia || 'Sin Gerencia';
       if (!gerMap[g]) gerMap[g] = { plan: [], exec: [] };
@@ -2510,8 +2586,31 @@ export default function App() {
     // Actually we need to use React state — we'll add it as a local variable using
     // the existing pattern. We'll use expandedDE state (added below).
 
+    const clearFilters = () => {
+      setDemand2GerenciaFilter(null);
+    };
+
+    const hasActiveFilters = demand2GerenciaFilter !== null;
+    const activeFiltersUI = hasActiveFilters ? (
+      <div className="flex flex-wrap gap-2 items-center bg-corporate-dark/5 p-3 rounded-lg border border-corporate-dark/10 mb-6 mt-4">
+        <span className="text-[10px] font-bold text-corporate-dark uppercase tracking-widest mr-2">Filtros Activos:</span>
+        {demand2GerenciaFilter && (
+          <div className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
+            <span>Gerencia: {demand2GerenciaFilter}</span>
+            <button onClick={() => setDemand2GerenciaFilter(null)} className="hover:text-red-300 transition-colors">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+        <button onClick={clearFilters} className="text-xs text-corporate-dark hover:text-corporate-light underline ml-2 font-medium">
+          Limpiar todos
+        </button>
+      </div>
+    ) : null;
+
     return (
       <div className="space-y-5 pb-10">
+        {activeFiltersUI}
 
         {/* ── Header ── */}
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2594,13 +2693,27 @@ export default function App() {
           </div>
 
           <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-            <h3 className="text-[10px] font-bold uppercase text-gray-500 mb-4 tracking-widest flex items-center gap-2">
-              <Users className="w-4 h-4" style={{ color: '#1e3a5f' }} />
-              % Avance Promedio por Gerencia
+            <h3 className="text-[10px] font-bold uppercase text-gray-500 mb-4 tracking-widest flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4" style={{ color: '#1e3a5f' }} />
+                % Avance Promedio por Gerencia
+              </div>
             </h3>
             <div style={{ height: Math.max(180, gerData.length * 52) }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart layout="vertical" data={gerData} margin={{ top: 0, right: 40, left: 10, bottom: 0 }} barCategoryGap="30%">
+                <BarChart 
+                  layout="vertical" 
+                  data={gerData} 
+                  margin={{ top: 0, right: 40, left: 10, bottom: 0 }} 
+                  barCategoryGap="30%"
+                  onClick={(e) => {
+                    if (e && e.activePayload && e.activePayload.length > 0) {
+                      const clickedGerencia = e.activePayload[0].payload.fullName;
+                      setDemand2GerenciaFilter(prev => prev === clickedGerencia ? null : clickedGerencia);
+                    }
+                  }}
+                  style={{ cursor: 'pointer' }}
+                >
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
                   <XAxis type="number" domain={[0, 100]} tickFormatter={v => `${v}%`} fontSize={9} />
                   <YAxis dataKey="name" type="category" width={150} fontSize={9} fontWeight={600} tick={{ fill: '#374151' }} />
@@ -3032,7 +3145,7 @@ export default function App() {
   const renderTrendDashboard = () => {
     return (
       <div className="space-y-6">
-        {/* Filters indicator */}
+        {/* Top KPIs */}
         {(selectedProjectName || trendFilter || trendTypeFilter || Object.values(trendColumnFilters).some(v => v && v !== 'Todos')) && (
           <div className="flex flex-wrap gap-2 items-center bg-corporate-dark/5 p-3 rounded-lg border border-corporate-dark/10">
             <span className="text-[10px] font-bold text-corporate-dark uppercase tracking-widest mr-2">Filtros Activos:</span>
@@ -3404,11 +3517,49 @@ export default function App() {
   };
 
   const renderWeeklyDashboard = () => {
+    const hasActiveFilters = (weeklyChartFilter || Object.values(weeklyColumnFilters).some(v => v && v !== 'Todos'));
+    const activeFiltersUI = hasActiveFilters ? (
+      <div className="flex flex-wrap gap-2 items-center bg-corporate-dark/5 p-3 rounded-lg border border-corporate-dark/10 mb-6">
+        <span className="text-[10px] font-bold text-corporate-dark uppercase tracking-widest mr-2">Filtros Activos:</span>
+        {weeklyChartFilter && (
+          <div className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
+            <span>{weeklyChartFilter.key}: {weeklyChartFilter.value}</span>
+            <button onClick={() => setWeeklyChartFilter(null)} className="hover:text-red-300"><X className="w-3 h-3" /></button>
+          </div>
+        )}
+        {Object.entries(weeklyColumnFilters).map(([key, value]) => {
+          if (!value || value === 'Todos') return null;
+          return (
+            <div key={key} className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
+              <span>{key}: {value}</span>
+              <button onClick={() => setWeeklyColumnFilters(prev => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+              })} className="hover:text-red-300"><X className="w-3 h-3" /></button>
+            </div>
+          );
+        })}
+        <button
+          onClick={() => { 
+            setWeeklyChartFilter(null);
+            setWeeklyColumnFilters({});
+          }}
+          className="text-[10px] font-bold text-red-600 hover:text-red-700 uppercase underline ml-auto"
+        >
+          Limpiar Todo
+        </button>
+      </div>
+    ) : null;
+
     if (!filteredWeekly || filteredWeekly.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center p-20 bg-white rounded-xl shadow-sm border border-gray-100 mt-20">
-          <FolderOpen className="w-16 h-16 text-gray-200 mb-4" />
-          <p className="text-gray-400 text-lg font-medium">No hay datos en Seguimiento Semanal con los filtros actuales.</p>
+        <div className="space-y-6 animate-in fade-in ease-out duration-500">
+          {activeFiltersUI}
+          <div className="flex flex-col items-center justify-center p-20 bg-white rounded-xl shadow-sm border border-gray-100 mt-20">
+            <FolderOpen className="w-16 h-16 text-gray-200 mb-4" />
+            <p className="text-gray-400 text-lg font-medium">No hay datos en Seguimiento Semanal con los filtros actuales.</p>
+          </div>
         </div>
       );
     }
@@ -3468,39 +3619,7 @@ export default function App() {
     return (
       <div className="space-y-6 animate-in fade-in ease-out duration-500">
         {/* Filter indicator */}
-        {(weeklyChartFilter || Object.values(weeklyColumnFilters).some(v => v && v !== 'Todos')) && (
-          <div className="flex flex-wrap gap-2 items-center bg-corporate-dark/5 p-3 rounded-lg border border-corporate-dark/10">
-            <span className="text-[10px] font-bold text-corporate-dark uppercase tracking-widest mr-2">Filtros Activos:</span>
-            {weeklyChartFilter && (
-              <div className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
-                <span>{weeklyChartFilter.key}: {weeklyChartFilter.value}</span>
-                <button onClick={() => setWeeklyChartFilter(null)} className="hover:text-red-300"><X className="w-3 h-3" /></button>
-              </div>
-            )}
-            {Object.entries(weeklyColumnFilters).map(([key, value]) => {
-              if (!value || value === 'Todos') return null;
-              return (
-                <div key={key} className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
-                  <span>{key}: {value}</span>
-                  <button onClick={() => setWeeklyColumnFilters(prev => {
-                    const next = { ...prev };
-                    delete next[key];
-                    return next;
-                  })} className="hover:text-red-300"><X className="w-3 h-3" /></button>
-                </div>
-              );
-            })}
-            <button
-              onClick={() => { 
-                setWeeklyChartFilter(null);
-                setWeeklyColumnFilters({});
-              }}
-              className="text-[10px] font-bold text-red-600 hover:text-red-700 uppercase underline ml-auto"
-            >
-              Limpiar Todo
-            </button>
-          </div>
-        )}
+        {activeFiltersUI}
 
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-800 to-gray-500">
