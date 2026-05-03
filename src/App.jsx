@@ -281,10 +281,10 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
     const start = new Date(row.fechaInicio);
     const end = new Date(row.fechaFin);
     if (isNaN(start) || isNaN(end) || end < start) return null;
-    
+
     const leftPct = ((start.getTime() - minDate.getTime()) / totalMs) * 100;
     const widthPct = ((end.getTime() - start.getTime()) / totalMs) * 100;
-    
+
     if (leftPct > 100 || leftPct + widthPct < 0) return null;
     const l = Math.max(0, leftPct);
     const r = Math.min(100, leftPct + widthPct);
@@ -299,7 +299,7 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
 
     return (
       <div style={{ position: 'absolute', left: `${l}%`, width: `${minW}%`, minWidth: '4px', height: '100%', top: 0, display: 'flex', alignItems: 'center', zIndex: 5 }}>
-        
+
         {row.fechaInicioStr !== row.fechaFinStr && (
           <span style={{ position: 'absolute', right: '100%', marginRight: '6px', fontSize: '9px', color: '#4b5563', fontWeight: 600, whiteSpace: 'nowrap' }}>
             {row.fechaInicioStr}
@@ -321,11 +321,11 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
 
   const LEFT_COLS = [
     { label: 'Indicador', w: 90, left: 210 },
-    { label: 'Gerencia',  w: 110, left: 300 },
-    { label: '% Plan',    w: 56, left: 410 },
-    { label: '% Real',    w: 56, left: 466 },
+    { label: 'Gerencia', w: 110, left: 300 },
+    { label: '% Plan', w: 56, left: 410 },
+    { label: '% Real', w: 56, left: 466 },
     { label: 'F. Inicio', w: 78, left: 522 },
-    { label: 'F. Fin',    w: 78, left: 600 },
+    { label: 'F. Fin', w: 78, left: 600 },
   ];
   const NAME_W = 210;
   const totalW = NAME_W + LEFT_COLS.reduce((a, c) => a + c.w, 0) + allGanttCols.length * COL_W;
@@ -405,7 +405,7 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
                   <td style={{ ...tdStyle(LEFT_COLS[3].w), textAlign: 'center', fontWeight: 700, color: '#15803d', position: 'sticky', left: LEFT_COLS[3].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1' }}>{pctStr(project.execPct)}</td>
                   <td style={{ ...tdStyle(LEFT_COLS[4].w), textAlign: 'center', color: '#6b7280', fontSize: 9, position: 'sticky', left: LEFT_COLS[4].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1' }}>{project.fechaInicioStr || '-'}</td>
                   <td style={{ ...tdStyle(LEFT_COLS[5].w), textAlign: 'center', color: '#6b7280', fontSize: 9, position: 'sticky', left: LEFT_COLS[5].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1' }}>{project.fechaFinStr || '-'}</td>
-                  
+
                   {hasGantt && (
                     <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, width: allGanttCols.length * COL_W, backgroundColor: 'transparent', borderBottom: '1px solid #cbd5e1' }}>
                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', pointerEvents: 'none' }}>
@@ -451,7 +451,7 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
                           <td style={{ ...tdStyle(LEFT_COLS[3].w), textAlign: 'center', fontWeight: 600, color: '#15803d', fontSize: 9, position: 'sticky', left: LEFT_COLS[3].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #e2e8f0' }}>{pctStr(etapa.execPct)}</td>
                           <td style={{ ...tdStyle(LEFT_COLS[4].w), textAlign: 'center', color: '#9ca3af', fontSize: 9, position: 'sticky', left: LEFT_COLS[4].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #e2e8f0' }}>{etapa.fechaInicioStr || '-'}</td>
                           <td style={{ ...tdStyle(LEFT_COLS[5].w), textAlign: 'center', color: '#9ca3af', fontSize: 9, position: 'sticky', left: LEFT_COLS[5].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #e2e8f0' }}>{etapa.fechaFinStr || '-'}</td>
-                          
+
                           {hasGantt && (
                             <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, width: allGanttCols.length * COL_W, backgroundColor: 'transparent', borderBottom: '1px solid #e2e8f0' }}>
                               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', pointerEvents: 'none' }}>
@@ -468,34 +468,35 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
                       {(etapaExpanded || !showEtapaRow) && hasActs && etapa.actividades.map((act, ai) => {
                         const actBg = '#ffffff';
                         return (
-                        <tr key={`${etapaKey}-${ai}`} style={{ height: 40 }}>
-                          <td style={{ ...tdStyle(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: actBg, paddingLeft: showEtapaRow ? 44 : 28, borderBottom: '1px solid #f1f5f9' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                              <div style={{ width: 4, height: 4, borderRadius: '50%', backgroundColor: '#cbd5e1', flexShrink: 0 }} />
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#6b7280', fontSize: 9 }} title={act.nombre}>
-                                {act.nombre}
-                              </span>
-                            </div>
-                          </td>
-                          <td style={{ ...tdStyle(LEFT_COLS[0].w), position: 'sticky', left: LEFT_COLS[0].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }} />
-                          <td style={{ ...tdStyle(LEFT_COLS[1].w), position: 'sticky', left: LEFT_COLS[1].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }} />
-                          <td style={{ ...tdStyle(LEFT_COLS[2].w), textAlign: 'center', color: '#1e3a5f', fontSize: 9, position: 'sticky', left: LEFT_COLS[2].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }}>{pctStr(act.planPct)}</td>
-                          <td style={{ ...tdStyle(LEFT_COLS[3].w), textAlign: 'center', color: '#15803d', fontSize: 9, position: 'sticky', left: LEFT_COLS[3].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }}>{pctStr(act.execPct)}</td>
-                          <td style={{ ...tdStyle(LEFT_COLS[4].w), textAlign: 'center', color: '#9ca3af', fontSize: 9, position: 'sticky', left: LEFT_COLS[4].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }}>{act.fechaInicioStr || '-'}</td>
-                          <td style={{ ...tdStyle(LEFT_COLS[5].w), textAlign: 'center', color: '#9ca3af', fontSize: 9, position: 'sticky', left: LEFT_COLS[5].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }}>{act.fechaFinStr || '-'}</td>
-                          
-                          {hasGantt && (
-                            <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, width: allGanttCols.length * COL_W, backgroundColor: 'transparent', borderBottom: '1px solid #f1f5f9' }}>
-                              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', pointerEvents: 'none' }}>
-                                {allGanttCols.map((_, i) => (
-                                  <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: '1px dashed #cbd5e1', opacity: 0.5 }} />
-                                ))}
+                          <tr key={`${etapaKey}-${ai}`} style={{ height: 40 }}>
+                            <td style={{ ...tdStyle(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: actBg, paddingLeft: showEtapaRow ? 44 : 28, borderBottom: '1px solid #f1f5f9' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                <div style={{ width: 4, height: 4, borderRadius: '50%', backgroundColor: '#cbd5e1', flexShrink: 0 }} />
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#6b7280', fontSize: 9 }} title={act.nombre}>
+                                  {act.nombre}
+                                </span>
                               </div>
-                              {renderBar(act, 40)}
                             </td>
-                          )}
-                        </tr>
-                      )})}
+                            <td style={{ ...tdStyle(LEFT_COLS[0].w), position: 'sticky', left: LEFT_COLS[0].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }} />
+                            <td style={{ ...tdStyle(LEFT_COLS[1].w), position: 'sticky', left: LEFT_COLS[1].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }} />
+                            <td style={{ ...tdStyle(LEFT_COLS[2].w), textAlign: 'center', color: '#1e3a5f', fontSize: 9, position: 'sticky', left: LEFT_COLS[2].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }}>{pctStr(act.planPct)}</td>
+                            <td style={{ ...tdStyle(LEFT_COLS[3].w), textAlign: 'center', color: '#15803d', fontSize: 9, position: 'sticky', left: LEFT_COLS[3].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }}>{pctStr(act.execPct)}</td>
+                            <td style={{ ...tdStyle(LEFT_COLS[4].w), textAlign: 'center', color: '#9ca3af', fontSize: 9, position: 'sticky', left: LEFT_COLS[4].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }}>{act.fechaInicioStr || '-'}</td>
+                            <td style={{ ...tdStyle(LEFT_COLS[5].w), textAlign: 'center', color: '#9ca3af', fontSize: 9, position: 'sticky', left: LEFT_COLS[5].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }}>{act.fechaFinStr || '-'}</td>
+
+                            {hasGantt && (
+                              <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, width: allGanttCols.length * COL_W, backgroundColor: 'transparent', borderBottom: '1px solid #f1f5f9' }}>
+                                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', pointerEvents: 'none' }}>
+                                  {allGanttCols.map((_, i) => (
+                                    <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: '1px dashed #cbd5e1', opacity: 0.5 }} />
+                                  ))}
+                                </div>
+                                {renderBar(act, 40)}
+                              </td>
+                            )}
+                          </tr>
+                        )
+                      })}
                     </React.Fragment>
                   );
                 })}
@@ -539,6 +540,8 @@ export default function App() {
   const [selectedOpp, setSelectedOpp] = useState(null); // For expanded OPP view
   const [showStrategicDetail, setShowStrategicDetail] = useState(false);
   const [demand2GerenciaFilter, setDemand2GerenciaFilter] = useState(null);
+  const [demand2IndicadorFilter, setDemand2IndicadorFilter] = useState(null);
+  const [demand2GestorFilter, setDemand2GestorFilter] = useState(null);
 
   const getUniqueValues = (key, isPortfolio = false, isTrend = false, isWeekly = false) => {
     let source = [];
@@ -586,7 +589,7 @@ export default function App() {
           if (key === 'Salud') return getDemandProjectHealth(item).label;
           if (key === 'Nombre del Proyecto') return item['Nombre del Proyecto'] || item['PROYECTO'];
         }
-        
+
         // For weekly Responsable: split "Juan / Pedro" into individual names
         if (isWeekly && key === 'Responsable') {
           const raw = item['Responsable'] || item['LÍDER TÉCNICO'] || item['LIDER DEL PROYECTO'] || '';
@@ -888,7 +891,7 @@ export default function App() {
         };
         const cellStr = (v) => (v !== null && v !== undefined ? String(v).trim() : '');
 
-        const MONTH_MAP = { ene:0,feb:1,mar:2,abr:3,may:4,jun:5,jul:6,ago:7,sep:8,oct:9,nov:10,dic:11 };
+        const MONTH_MAP = { ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5, jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11 };
 
         // ── Step 1: Find the second table (avances + cronograma) ──────────────
         // Strategy: scan ALL rows, find the one that has the most "useful" columns
@@ -938,7 +941,7 @@ export default function App() {
         const tryBuildGanttCols = (monthRowIdx, yearRowIdx) => {
           if (monthRowIdx < 0 || monthRowIdx >= allRows.length) return [];
           const monthRow = allRows[monthRowIdx] || [];
-          const yearRow  = yearRowIdx >= 0 && yearRowIdx < allRows.length ? (allRows[yearRowIdx] || []) : [];
+          const yearRow = yearRowIdx >= 0 && yearRowIdx < allRows.length ? (allRows[yearRowIdx] || []) : [];
           const cols = [];
           let curYear = null;
 
@@ -978,38 +981,38 @@ export default function App() {
         const h2 = h2raw.map(c => cellStr(c));
 
         const findCol = (...kws) => h2.findIndex(h =>
-          kws.some(k => h.toLowerCase().replace(/[\s\-_]/g,'').includes(k.toLowerCase().replace(/[\s\-_]/g,'')))
+          kws.some(k => h.toLowerCase().replace(/[\s\-_]/g, '').includes(k.toLowerCase().replace(/[\s\-_]/g, '')))
         );
 
-        const colN         = findCol('N°','Nro','Num');
+        const colN = findCol('N°', 'Nro', 'Num');
         const colIndicador = findCol('Indicador');
-        const colProyecto  = findCol('PROYECTO','NombreProyecto','Proyecto');
-        const colGerencia  = findCol('Gerencia','GerenciaL');
-        const colGestor    = findCol('Gestor','Responsable');
-        const colPlan      = findCol('Planificado','%Plan','AvancePlan');
+        const colProyecto = findCol('PROYECTO', 'NombreProyecto', 'Proyecto');
+        const colGerencia = findCol('Gerencia', 'GerenciaL');
+        const colGestor = findCol('Gestor', 'Responsable');
+        const colPlan = findCol('Planificado', '%Plan', 'AvancePlan');
         // Exec column: "%" alone, or right after plan col
         const colExec = (() => {
           const idx = h2.findIndex((h, i) => {
-            const s = h.toLowerCase().replace(/[\s\-_]/g,'');
+            const s = h.toLowerCase().replace(/[\s\-_]/g, '');
             return i !== colPlan && (s === '%' || s.includes('ejecutado') || s.includes('completado') || s.includes('avanceejec') || s.includes('avancecomp'));
           });
           if (idx !== -1) return idx;
           // fallback: column right after plan
           return colPlan !== -1 ? colPlan + 1 : -1;
         })();
-        const colInicio = findCol('FechaInicio','Inicio','FInicio');
-        const colFin    = findCol('FechaFin','Fin','FFin');
+        const colInicio = findCol('FechaInicio', 'Inicio', 'FInicio');
+        const colFin = findCol('FechaFin', 'Fin', 'FFin');
 
         // ── Step 4: Parse data rows ───────────────────────────────────────────
-        const ETAPA_RE    = /^(etapa|fase|mvp|sprint|release|hito|milestone)/i;
+        const ETAPA_RE = /^(etapa|fase|mvp|sprint|release|hito|milestone)/i;
         const ACTIVITY_RE = /^(desarrollo|calidad|producci[oó]n|testing|qa|deploy|implementaci[oó]n|uat|certificaci[oó]n)/i;
         // Entregables and similar are always flat leaves — never parents of other rows
-        const LEAF_RE     = /^(entregable|deliverable|componente|m[oó]dulo)/i;
+        const LEAF_RE = /^(entregable|deliverable|componente|m[oó]dulo)/i;
         const INDICATOR_RE = /^(en curso|en riesgo|atrasado|finalizado|no iniciado|completado)/i;
 
         const schedule = [];
         let curProject = null;
-        let curEtapa   = null;
+        let curEtapa = null;
 
         const getCell = (row, idx) => (idx >= 0 && idx < row.length) ? row[idx] : null;
 
@@ -1019,46 +1022,46 @@ export default function App() {
           const nonNull = row.filter(c => c !== null && c !== undefined && c !== '');
           if (nonNull.length === 0) continue;
 
-          const rawName      = getCell(row, colProyecto);
+          const rawName = getCell(row, colProyecto);
           const rawIndicador = getCell(row, colIndicador);
-          const rawN         = getCell(row, colN);
-          const rawPlan      = getCell(row, colPlan);
-          const rawExec      = getCell(row, colExec);
-          const rawInicio    = getCell(row, colInicio);
-          const rawFin       = getCell(row, colFin);
-          const rawGerencia  = getCell(row, colGerencia);
-          const rawGestor    = getCell(row, colGestor);
+          const rawN = getCell(row, colN);
+          const rawPlan = getCell(row, colPlan);
+          const rawExec = getCell(row, colExec);
+          const rawInicio = getCell(row, colInicio);
+          const rawFin = getCell(row, colFin);
+          const rawGerencia = getCell(row, colGerencia);
+          const rawGestor = getCell(row, colGestor);
 
-          const name      = rawName ? cellStr(rawName) : null;
+          const name = rawName ? cellStr(rawName) : null;
           const indicador = rawIndicador ? cellStr(rawIndicador) : null;
 
           if (!name) continue;
 
-          const planPct     = toNum(rawPlan);
-          const execPct     = toNum(rawExec);
+          const planPct = toNum(rawPlan);
+          const execPct = toNum(rawExec);
           const fechaInicio = toDate(rawInicio);
-          const fechaFin    = toDate(rawFin);
+          const fechaFin = toDate(rawFin);
 
           const rowBase = {
             nombre: name,
             planPct, execPct,
             fechaInicio, fechaFin,
             fechaInicioStr: toDateStr(rawInicio),
-            fechaFinStr:    toDateStr(rawFin),
+            fechaFinStr: toDateStr(rawFin),
           };
 
           const hasIndicator = indicador && INDICATOR_RE.test(indicador);
-          const hasN         = rawN !== null && rawN !== undefined && !isNaN(parseInt(String(rawN)));
-          const isLeaf       = LEAF_RE.test(name) || ACTIVITY_RE.test(name);
-          const isEtapa      = !isLeaf && ETAPA_RE.test(name);
+          const hasN = rawN !== null && rawN !== undefined && !isNaN(parseInt(String(rawN)));
+          const isLeaf = LEAF_RE.test(name) || ACTIVITY_RE.test(name);
+          const isEtapa = !isLeaf && ETAPA_RE.test(name);
 
           if (hasIndicator || hasN) {
             // PROJECT ROW
             curProject = {
               ...rowBase,
               indicador: indicador || '',
-              gerencia:  rawGerencia ? cellStr(rawGerencia) : '',
-              gestor:    rawGestor   ? cellStr(rawGestor)   : '',
+              gerencia: rawGerencia ? cellStr(rawGerencia) : '',
+              gestor: rawGestor ? cellStr(rawGestor) : '',
               etapas: [],
             };
             curEtapa = null;
@@ -1112,7 +1115,7 @@ export default function App() {
         const allDates = [];
         const collectDates = (row) => {
           if (row.fechaInicio) allDates.push(row.fechaInicio);
-          if (row.fechaFin)    allDates.push(row.fechaFin);
+          if (row.fechaFin) allDates.push(row.fechaFin);
         };
         schedule.forEach(p => {
           collectDates(p);
@@ -1123,17 +1126,17 @@ export default function App() {
         });
 
         if (allDates.length > 0) {
-          const MONTH_NAMES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+          const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
           const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
           const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
 
           // Start from the earliest date (no buffer — exact coverage)
           const rangeStart = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
-          const rangeEnd   = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+          const rangeEnd = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
 
           // Check if existing ganttCols already cover the range
           const firstCol = ganttCols.length > 0 ? new Date(ganttCols[0].year, ganttCols[0].month, 1) : null;
-          const lastCol  = ganttCols.length > 0 ? new Date(ganttCols[ganttCols.length - 1].year, ganttCols[ganttCols.length - 1].month, 1) : null;
+          const lastCol = ganttCols.length > 0 ? new Date(ganttCols[ganttCols.length - 1].year, ganttCols[ganttCols.length - 1].month, 1) : null;
 
           const needsExpansion = ganttCols.length === 0 || firstCol > rangeStart || lastCol < rangeEnd;
 
@@ -1145,7 +1148,7 @@ export default function App() {
             while (cur <= rangeEnd) {
               ganttCols.push({
                 colIdx: idx,
-                year:  cur.getFullYear(),
+                year: cur.getFullYear(),
                 month: cur.getMonth(),
                 label: MONTH_NAMES[cur.getMonth()],
               });
@@ -1324,7 +1327,7 @@ export default function App() {
         const matchDimension = sidebarFilters.dimension === 'Todas' || t['Dimensión'] === sidebarFilters.dimension;
         const matchPortfolio = topPortfolio === 'Todas' || t['Cartera'] === topPortfolio;
         if (!matchMgmt || !matchDimension || !matchPortfolio) return false;
-        
+
         if (trendTypeFilter) {
           let type = t['Tipo de Proyecto'];
           if (type === "0" || type === 0) {
@@ -1336,12 +1339,12 @@ export default function App() {
           }
           if (type !== trendTypeFilter.type) return false;
         }
-        
+
         if (trendSearch) {
           const projectNameStr = String(t['Proyecto'] || '').toLowerCase().trim();
           if (!projectNameStr.includes(trendSearch.toLowerCase().trim())) return false;
         }
-        
+
         const matchTrendColumnFilters = Object.entries(trendColumnFilters).every(([key, value]) => {
           if (!value || value === 'Todos') return true;
           if (key === 'Tipo de Proyecto') {
@@ -1355,17 +1358,17 @@ export default function App() {
             }
             return type === value;
           }
-          
+
           if (value === 'Otros') {
             const strVal = String(t[key] || '').trim();
             return strVal === '' || strVal === '-' || strVal === '0';
           }
-          
+
           return String(t[key] || '') === String(value);
         });
-        
+
         if (!matchTrendColumnFilters) return false;
-        
+
         return true;
       })
       : data?.trend?.filter(t =>
@@ -1438,7 +1441,7 @@ export default function App() {
       const matchDimension = sidebarFilters.dimension === 'Todas' || item['Dimensión'] === sidebarFilters.dimension;
       const matchPortfolio = topPortfolio === 'Todas' || item['Cartera'] === topPortfolio;
       const matchProject = !selectedProjectName || item['PROYECTO'] === selectedProjectName || item['Nombre del Proyecto'] === selectedProjectName;
-      
+
       let matchChart = true;
       if (weeklyChartFilter) {
         if (weeklyChartFilter.key === 'Proyecto') {
@@ -1460,7 +1463,7 @@ export default function App() {
           matchChart = normalized === weeklyChartFilter.value;
         }
       }
-      
+
       const matchWeeklyColumnFilters = Object.entries(weeklyColumnFilters).every(([key, value]) => {
         if (!value || value === 'Todos') return true;
         // Responsable can be "Juan / Pedro" — match if any individual name matches
@@ -1475,7 +1478,7 @@ export default function App() {
         }
         return strVal === String(value);
       });
-      
+
       return matchMgmt && matchDimension && matchPortfolio && matchProject && matchChart && matchWeeklyColumnFilters;
     });
   }, [data, sidebarFilters.management, sidebarFilters.dimension, topPortfolio, selectedProjectName, weeklyChartFilter, weeklyColumnFilters]);
@@ -1501,7 +1504,7 @@ export default function App() {
       if (!matchMgmt || !matchDimension || !matchPortfolio) return false;
       if (selectedProjectName && t['Proyecto'] !== selectedProjectName) return false;
       if (trendFilter && !Object.keys(t).some(k => k.includes(trendFilter.month))) return false;
-      
+
       if (trendTypeFilter) {
         let type = t['Tipo de Proyecto'];
         if (type === "0" || type === 0) {
@@ -1513,12 +1516,12 @@ export default function App() {
         }
         if (type !== trendTypeFilter.type) return false;
       }
-      
+
       if (trendSearch) {
         const projectNameStr = String(t['Proyecto'] || '').toLowerCase().trim();
         if (!projectNameStr.includes(trendSearch.toLowerCase().trim())) return false;
       }
-      
+
       const matchTrendColumnFilters = Object.entries(trendColumnFilters).every(([key, value]) => {
         if (!value || value === 'Todos') return true;
         if (key === 'Tipo de Proyecto') {
@@ -1532,27 +1535,27 @@ export default function App() {
           }
           return type === value;
         }
-        
+
         if (value === 'Otros') {
           const strVal = String(t[key] || '').trim();
           return strVal === '' || strVal === '-' || strVal === '0';
         }
-        
+
         return String(t[key] || '') === String(value);
       });
-      
+
       if (!matchTrendColumnFilters) return false;
-      
+
       return true;
     });
 
     const total = filteredTrend.length;
     const typeCounts = {};
-    
+
     // Initialize counts for specific statuses to ensure they always show
     const statusLabels = ['01. No Iniciado', '02. En Curso', '03. Implementado', '04. Cerrado', '05. Descartado'];
     statusLabels.forEach(label => counts[label] = 0);
-    
+
     filteredTrend.forEach(t => {
       let s = t['Estado'] || 'Sin Estado';
       // Normalize status to match specific labels
@@ -1567,7 +1570,7 @@ export default function App() {
       } else if (s.toLowerCase().includes('descartado') || s.toLowerCase().includes('05')) {
         s = '05. Descartado';
       }
-      
+
       counts[s] = (counts[s] || 0) + 1;
 
       let type = t['Tipo de Proyecto'];
@@ -2429,11 +2432,23 @@ export default function App() {
   };
 
   const renderDemand2Dashboard = () => {
+    const indicadorInfo = (ind) => {
+      const s = String(ind || '').toLowerCase();
+      if (s.includes('riesgo')) return { dot: '#f97316', badge: 'bg-orange-100 text-orange-700 border-orange-300', label: 'EN RIESGO' };
+      if (s.includes('atrasado') || s.includes('atraso')) return { dot: '#ef4444', badge: 'bg-red-100 text-red-700 border-red-300', label: 'ATRASADO' };
+      if (s.includes('finalizado') || s.includes('completado')) return { dot: '#3b82f6', badge: 'bg-blue-100 text-blue-700 border-blue-300', label: 'FINALIZADO' };
+      if (s.includes('no iniciado')) return { dot: '#9ca3af', badge: 'bg-gray-100 text-gray-600 border-gray-300', label: 'NO INICIADO' };
+      return { dot: '#22c55e', badge: 'bg-green-100 text-green-700 border-green-300', label: 'EN CURSO' };
+    };
+
     const fullSchedule = demand2Data?.schedule || [];
-    const schedule = demand2GerenciaFilter 
-      ? fullSchedule.filter(p => (p.gerencia || 'Sin Gerencia') === demand2GerenciaFilter)
-      : fullSchedule;
-      
+    const schedule = fullSchedule.filter(p => {
+      const matchGerencia = demand2GerenciaFilter ? (p.gerencia || 'Sin Gerencia') === demand2GerenciaFilter : true;
+      const matchGestor = demand2GestorFilter ? (p.gestor || 'Sin Gestor') === demand2GestorFilter : true;
+      const matchIndicador = demand2IndicadorFilter ? p.indicador === demand2IndicadorFilter : true;
+      return matchGerencia && matchGestor && matchIndicador;
+    });
+
     const ganttColsRaw = demand2Data?.ganttCols || [];
 
     // Derive gantt cols from schedule if not stored separately
@@ -2477,15 +2492,6 @@ export default function App() {
       return `${pct.toFixed(0)}%`;
     };
 
-    const indicadorInfo = (ind) => {
-      const s = String(ind || '').toLowerCase();
-      if (s.includes('riesgo')) return { dot: '#f97316', badge: 'bg-orange-100 text-orange-700 border-orange-300', label: 'EN RIESGO' };
-      if (s.includes('atrasado') || s.includes('atraso')) return { dot: '#ef4444', badge: 'bg-red-100 text-red-700 border-red-300', label: 'ATRASADO' };
-      if (s.includes('finalizado') || s.includes('completado')) return { dot: '#3b82f6', badge: 'bg-blue-100 text-blue-700 border-blue-300', label: 'FINALIZADO' };
-      if (s.includes('no iniciado')) return { dot: '#9ca3af', badge: 'bg-gray-100 text-gray-600 border-gray-300', label: 'NO INICIADO' };
-      return { dot: '#22c55e', badge: 'bg-green-100 text-green-700 border-green-300', label: 'EN CURSO' };
-    };
-
     // ── Gantt color logic ─────────────────────────────────────────────────────
     // For a given row (project/etapa/actividad) and a month column,
     // return the background color:
@@ -2499,10 +2505,10 @@ export default function App() {
 
       // Use the 1st of the month for start comparison, last day for end
       const colStart = new Date(colYear, colMonth, 1);
-      const colEnd   = new Date(colYear, colMonth + 1, 0); // last day of month
+      const colEnd = new Date(colYear, colMonth + 1, 0); // last day of month
 
       const start = new Date(fechaInicio);
-      const end   = new Date(fechaFin);
+      const end = new Date(fechaFin);
 
       // No overlap
       if (colEnd < start || colStart > end) return null;
@@ -2528,9 +2534,9 @@ export default function App() {
 
     // ── KPIs ─────────────────────────────────────────────────────────────────
     const totalProjects = schedule.length;
-    const enCurso    = schedule.filter(p => /en curso/i.test(p.indicador)).length;
-    const enRiesgo   = schedule.filter(p => /en riesgo/i.test(p.indicador)).length;
-    const atrasado   = schedule.filter(p => /atrasado/i.test(p.indicador)).length;
+    const enCurso = schedule.filter(p => /en curso/i.test(p.indicador)).length;
+    const enRiesgo = schedule.filter(p => /en riesgo/i.test(p.indicador)).length;
+    const atrasado = schedule.filter(p => /atrasado/i.test(p.indicador)).length;
     const finalizado = schedule.filter(p => /finalizado/i.test(p.indicador)).length;
 
     const validPlan = schedule.filter(p => toNum(p.planPct) !== null);
@@ -2550,7 +2556,7 @@ export default function App() {
         name: p.nombre.length > 24 ? p.nombre.substring(0, 22) + '\u2026' : p.nombre,
         fullName: p.nombre,
         planificado: plan !== null ? (plan <= 1.01 ? Math.round(plan * 100) : Math.round(plan)) : 0,
-        completado:  exec !== null ? (exec <= 1.01 ? Math.round(exec * 100) : Math.round(exec)) : 0,
+        completado: exec !== null ? (exec <= 1.01 ? Math.round(exec * 100) : Math.round(exec)) : 0,
         indicador: p.indicador,
       };
     });
@@ -2568,7 +2574,7 @@ export default function App() {
       name: name.length > 20 ? name.substring(0, 18) + '\u2026' : name,
       fullName: name,
       planificado: v.plan.length ? Math.round(v.plan.reduce((a, b) => a + b, 0) / v.plan.length) : 0,
-      completado:  v.exec.length ? Math.round(v.exec.reduce((a, b) => a + b, 0) / v.exec.length) : 0,
+      completado: v.exec.length ? Math.round(v.exec.reduce((a, b) => a + b, 0) / v.exec.length) : 0,
     }));
 
     // ── Gantt month groups by year ────────────────────────────────────────────
@@ -2577,7 +2583,7 @@ export default function App() {
       if (!yearGroups[col.year]) yearGroups[col.year] = [];
       yearGroups[col.year].push(col);
     });
-    const MONTH_ABBR = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const MONTH_ABBR = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
     // ── Expand/collapse state (per project index) ─────────────────────────────
     // We use a local state via useRef trick — but since we're inside render,
@@ -2588,9 +2594,11 @@ export default function App() {
 
     const clearFilters = () => {
       setDemand2GerenciaFilter(null);
+      setDemand2IndicadorFilter(null);
+      setDemand2GestorFilter(null);
     };
 
-    const hasActiveFilters = demand2GerenciaFilter !== null;
+    const hasActiveFilters = demand2GerenciaFilter !== null || demand2IndicadorFilter !== null || demand2GestorFilter !== null;
     const activeFiltersUI = hasActiveFilters ? (
       <div className="flex flex-wrap gap-2 items-center bg-corporate-dark/5 p-3 rounded-lg border border-corporate-dark/10 mb-6 mt-4">
         <span className="text-[10px] font-bold text-corporate-dark uppercase tracking-widest mr-2">Filtros Activos:</span>
@@ -2598,6 +2606,22 @@ export default function App() {
           <div className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
             <span>Gerencia: {demand2GerenciaFilter}</span>
             <button onClick={() => setDemand2GerenciaFilter(null)} className="hover:text-red-300 transition-colors">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+        {demand2IndicadorFilter && (
+          <div className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
+            <span>Indicador: {demand2IndicadorFilter}</span>
+            <button onClick={() => setDemand2IndicadorFilter(null)} className="hover:text-red-300 transition-colors">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+        {demand2GestorFilter && (
+          <div className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
+            <span>Gestor: {demand2GestorFilter}</span>
+            <button onClick={() => setDemand2GestorFilter(null)} className="hover:text-red-300 transition-colors">
               <X className="w-3 h-3" />
             </button>
           </div>
@@ -2638,12 +2662,12 @@ export default function App() {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           {[
             { label: 'Total Proyectos', value: totalProjects, color: '#1e3a5f', bg: '#f8fafc' },
-            { label: 'En Curso',        value: enCurso,       color: '#15803d', bg: '#f0fdf4' },
-            { label: 'En Riesgo',       value: enRiesgo,      color: '#c2410c', bg: '#fff7ed' },
-            { label: 'Atrasado',        value: atrasado,      color: '#dc2626', bg: '#fef2f2' },
-            { label: 'Finalizado',      value: finalizado,    color: '#1d4ed8', bg: '#eff6ff' },
-            { label: 'Plan Prom.',      value: `${avgPlan.toFixed(0)}%`, color: '#1e3a5f', bg: '#f8fafc' },
-            { label: 'Real Prom.',      value: `${avgExec.toFixed(0)}%`, color: '#15803d', bg: '#f0fdf4' },
+            { label: 'En Curso', value: enCurso, color: '#15803d', bg: '#f0fdf4' },
+            { label: 'En Riesgo', value: enRiesgo, color: '#c2410c', bg: '#fff7ed' },
+            { label: 'Atrasado', value: atrasado, color: '#dc2626', bg: '#fef2f2' },
+            { label: 'Finalizado', value: finalizado, color: '#1d4ed8', bg: '#eff6ff' },
+            { label: 'Plan Prom.', value: `${avgPlan.toFixed(0)}%`, color: '#1e3a5f', bg: '#f8fafc' },
+            { label: 'Real Prom.', value: `${avgExec.toFixed(0)}%`, color: '#15803d', bg: '#f0fdf4' },
           ].map((k, i) => (
             <div key={i} className="rounded-xl p-3 text-center shadow-sm border border-gray-200" style={{ backgroundColor: k.bg }}>
               <div className="text-2xl font-black" style={{ color: k.color }}>{k.value}</div>
@@ -2686,7 +2710,7 @@ export default function App() {
                   />
                   <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
                   <Bar dataKey="planificado" name="% Planificado" fill="#93c5fd" radius={[0, 3, 3, 0]} barSize={10} />
-                  <Bar dataKey="completado"  name="% Completado"  fill="#15803d" radius={[0, 3, 3, 0]} barSize={10} />
+                  <Bar dataKey="completado" name="% Completado" fill="#15803d" radius={[0, 3, 3, 0]} barSize={10} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -2701,10 +2725,10 @@ export default function App() {
             </h3>
             <div style={{ height: Math.max(180, gerData.length * 52) }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart 
-                  layout="vertical" 
-                  data={gerData} 
-                  margin={{ top: 0, right: 40, left: 10, bottom: 0 }} 
+                <BarChart
+                  layout="vertical"
+                  data={gerData}
+                  margin={{ top: 0, right: 40, left: 10, bottom: 0 }}
                   barCategoryGap="30%"
                   onClick={(e) => {
                     if (e && e.activePayload && e.activePayload.length > 0) {
@@ -2734,7 +2758,7 @@ export default function App() {
                   />
                   <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
                   <Bar dataKey="planificado" name="% Planificado" fill="#93c5fd" radius={[0, 3, 3, 0]} barSize={14} />
-                  <Bar dataKey="completado"  name="% Completado"  fill="#15803d" radius={[0, 3, 3, 0]} barSize={14} />
+                  <Bar dataKey="completado" name="% Completado" fill="#15803d" radius={[0, 3, 3, 0]} barSize={14} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -3181,10 +3205,10 @@ export default function App() {
               );
             })}
             <button
-              onClick={() => { 
-                setSelectedProjectName(null); 
-                setTrendFilter(null); 
-                setTrendTypeFilter(null); 
+              onClick={() => {
+                setSelectedProjectName(null);
+                setTrendFilter(null);
+                setTrendTypeFilter(null);
                 setTrendColumnFilters({});
               }}
               className="text-[10px] font-bold text-red-600 hover:text-red-700 uppercase underline ml-auto"
@@ -3366,7 +3390,7 @@ export default function App() {
                       if (!matchMgmt || !matchDimension || !matchPortfolio) return false;
                       if (selectedProjectName && t['Proyecto'] !== selectedProjectName) return false;
                       if (trendFilter && !Object.keys(t).some(k => k.includes(trendFilter.month))) return false;
-                      
+
                       if (trendTypeFilter) {
                         let type = t['Tipo de Proyecto'];
                         if (type === "0" || type === 0) {
@@ -3378,7 +3402,7 @@ export default function App() {
                         }
                         if (type !== trendTypeFilter.type) return false;
                       }
-                      
+
                       const matchTrendColumnFilters = Object.entries(trendColumnFilters).every(([key, value]) => {
                         if (!value || value === 'Todos') return true;
                         if (key === 'Tipo de Proyecto') {
@@ -3392,17 +3416,17 @@ export default function App() {
                           }
                           return type === value;
                         }
-                        
+
                         if (value === 'Otros') {
                           const strVal = String(t[key] || '').trim();
                           return strVal === '' || strVal === '-' || strVal === '0';
                         }
-                        
+
                         return String(t[key] || '') === String(value);
                       });
-                      
+
                       if (!matchTrendColumnFilters) return false;
-                      
+
                       return true;
                     })
                     .map((t, i) => (
@@ -3541,7 +3565,7 @@ export default function App() {
           );
         })}
         <button
-          onClick={() => { 
+          onClick={() => {
             setWeeklyChartFilter(null);
             setWeeklyColumnFilters({});
           }}
@@ -3578,13 +3602,13 @@ export default function App() {
 
     // Normalize Estado: match known keywords at the start; long unknowns → 'Otros'
     const KNOWN_ESTADO_PREFIXES = [
-      { keys: ['finalizado','cerrado','terminado','implementado'], label: 'Finalizado' },
-      { keys: ['en proceso','en curso'],                           label: 'En Proceso' },
-      { keys: ['pendiente'],                                       label: 'Pendiente'  },
-      { keys: ['observado'],                                       label: 'Observado'  },
-      { keys: ['por definir'],                                     label: 'Por Definir'},
-      { keys: ['bloqueado'],                                       label: 'Bloqueado'  },
-      { keys: ['cancelado','descartado'],                          label: 'Cancelado'  },
+      { keys: ['finalizado', 'cerrado', 'terminado', 'implementado'], label: 'Finalizado' },
+      { keys: ['en proceso', 'en curso'], label: 'En Proceso' },
+      { keys: ['pendiente'], label: 'Pendiente' },
+      { keys: ['observado'], label: 'Observado' },
+      { keys: ['por definir'], label: 'Por Definir' },
+      { keys: ['bloqueado'], label: 'Bloqueado' },
+      { keys: ['cancelado', 'descartado'], label: 'Cancelado' },
     ];
     const normalizeEstado = (raw) => {
       if (!raw) return 'Sin estado';
@@ -3672,9 +3696,9 @@ export default function App() {
             </h3>
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart 
-                  data={proyectosData} 
-                  layout="vertical" 
+                <BarChart
+                  data={proyectosData}
+                  layout="vertical"
                   margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                   onClick={(data, index, event) => {
                     if (data && data.activePayload && data.activePayload[0]) {
@@ -3878,7 +3902,7 @@ export default function App() {
             <Briefcase className="w-12 h-12 text-corporate-dark" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Dashboard de Portafolio</h1>
-          <p className="text-gray-500 text-sm mb-6">Cargue el reporte Excel para iniciar la visualización estratégica.</p>
+          <p className="text-gray-500 text-sm mb-6">Cargue el Portafolio de Demanda Estratégica Excel para iniciar la visualización.</p>
           <input
             type="file"
             accept=".xlsx, .xls"
@@ -3904,10 +3928,12 @@ export default function App() {
       {/* Header */}
       <header className="bg-[#a5000d] text-white p-4 flex justify-between items-center shadow-md shrink-0">
         <div className="flex items-center space-x-4">
-          <div className="bg-white/10 p-2 rounded">
-            <LayoutDashboard className="w-6 h-6 text-white" />
+          <div className="bg-white p-2 rounded flex items-center justify-center">
+            <img src="https://www.fonafe.gob.pe/pw_content/empresas/17/Img/BancoNacion.png?946855555" alt="Banco de la Nación" className="h-6" />
           </div>
-          <div className="font-bold text-xl tracking-wide uppercase">Monitoreo y Control del Portafolio de Proyectos</div>
+          <div className="flex flex-col">
+            <div className="font-bold text-xl tracking-wide uppercase">Monitoreo y Control del Portafolio de Proyectos</div>
+          </div>
         </div>
         <div className="flex items-center space-x-6">
           <div className="text-xs font-medium flex flex-col items-end">
@@ -3917,12 +3943,12 @@ export default function App() {
           <div className="flex gap-2">
             <label className="bg-white text-[#a5000d] hover:bg-gray-100 px-4 py-2 rounded font-bold text-xs flex items-center gap-2 cursor-pointer transition-colors shadow-lg">
               <Upload className="w-4 h-4" />
-              <span>SUBIR ORIGINAL</span>
+              <span>SUBIR PORTAFOLIO DEMANDA ESTRATÉGICA </span>
               <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} className="hidden" />
             </label>
             <label className="bg-[#a5000d] border border-white hover:bg-white hover:text-white px-4 py-2 rounded font-bold text-xs flex items-center gap-2 cursor-pointer transition-colors shadow-lg">
               <Upload className="w-4 h-4" />
-              <span>SUBIR DEMANDA TI</span>
+              <span>SUBIR PORTAFOLIO DE DEMANDA TÁCTICA</span>
               <input type="file" accept=".xlsx, .xls, .xlsm" onChange={handleDemand2Upload} className="hidden" />
             </label>
           </div>
@@ -3977,9 +4003,43 @@ export default function App() {
       </nav>
 
       {/* Filter Bar (Horizontal) */}
-      {!showStrategicDetail && activeTab !== 'demand2' && (
+      {!showStrategicDetail && activeTab !== 'weekly' && (
         <div className="bg-white border-b border-gray-100 p-4 flex flex-wrap gap-4 items-center shrink-0 px-10">
-          {activeTab === 'trend' ? (
+          {activeTab === 'demand2' ? (
+            <>
+              <div className="flex items-center space-x-3">
+                <Activity className="w-4 h-4 text-gray-400" />
+                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Filtrar por Indicador:</span>
+                <select
+                  value={demand2IndicadorFilter || 'Todos'}
+                  onChange={(e) => setDemand2IndicadorFilter(e.target.value === 'Todos' ? null : e.target.value)}
+                  className="border border-gray-200 rounded-lg px-4 py-1.5 text-xs font-bold focus:ring-2 focus:ring-red-500/20 outline-none bg-gray-50 hover:bg-white transition-all min-w-[250px]"
+                >
+                  <option value="Todos">-- TODOS LOS INDICADORES --</option>
+                  {getFilterOptions('indicador').map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="h-6 w-px bg-gray-200" />
+
+              <div className="flex items-center space-x-3">
+                <Users className="w-4 h-4 text-gray-400" />
+                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Filtrar por Gestor:</span>
+                <select
+                  value={demand2GestorFilter || 'Todos'}
+                  onChange={(e) => setDemand2GestorFilter(e.target.value === 'Todos' ? null : e.target.value)}
+                  className="border border-gray-200 rounded-lg px-4 py-1.5 text-xs font-bold focus:ring-2 focus:ring-red-500/20 outline-none bg-gray-50 hover:bg-white transition-all min-w-[250px]"
+                >
+                  <option value="Todos">-- TODOS LOS GESTORES --</option>
+                  {getFilterOptions('gestor').map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : activeTab === 'trend' ? (
             <>
               <div className="flex items-center space-x-3">
                 <Users className="w-4 h-4 text-gray-400" />
@@ -4138,11 +4198,11 @@ export default function App() {
                 activeFilterMenu.isPortfolio
                   ? (!portfolioColumnFilters[activeFilterMenu.key] || portfolioColumnFilters[activeFilterMenu.key] === 'Todos')
                   : activeFilterMenu.isTrend
-                  ? (!trendColumnFilters[activeFilterMenu.key] || trendColumnFilters[activeFilterMenu.key] === 'Todos')
-                  : activeFilterMenu.isWeekly
-                  ? (!weeklyColumnFilters[activeFilterMenu.key] || weeklyColumnFilters[activeFilterMenu.key] === 'Todos')
-                  : (!tableColumnFilters[activeFilterMenu.key] || tableColumnFilters[activeFilterMenu.key] === 'Todos')
-                    ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-700"
+                    ? (!trendColumnFilters[activeFilterMenu.key] || trendColumnFilters[activeFilterMenu.key] === 'Todos')
+                    : activeFilterMenu.isWeekly
+                      ? (!weeklyColumnFilters[activeFilterMenu.key] || weeklyColumnFilters[activeFilterMenu.key] === 'Todos')
+                      : (!tableColumnFilters[activeFilterMenu.key] || tableColumnFilters[activeFilterMenu.key] === 'Todos')
+                        ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-700"
               )}
             >
               <span>(Todos)</span>
