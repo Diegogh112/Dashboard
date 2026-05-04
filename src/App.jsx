@@ -592,9 +592,29 @@ export default function App() {
 
         // For weekly Responsable: split "Juan / Pedro" into individual names
         if (isWeekly && key === 'Responsable') {
-          const raw = item['Responsable'] || item['LÍDER TÉCNICO'] || item['LIDER DEL PROYECTO'] || '';
-          const names = String(raw).split('/').map(n => n.trim()).filter(n => n && n !== '-');
+          const raw = cleanString(item['Responsable'] || item['LÍDER TÉCNICO'] || item['LIDER DEL PROYECTO'] || '');
+          const names = raw.split('/').map(n => n.trim()).filter(n => n && n !== '-');
           return names.length > 0 ? names : ['Sin asignar'];
+        }
+
+        // For weekly Estado: normalize to predefined categories
+        if (isWeekly && key === 'Estado') {
+          return normalizeEstado(item[key]);
+        }
+
+        // For weekly date columns: group by month-year (or just month if same year), text keywords, or "Otros"
+        if (isWeekly && (key === 'Fecha Compromiso2' || key === 'FECHA COMPROMISO' || key.includes('Fecha Compromiso') || key.includes('FECHA'))) {
+          const raw = item['Fecha Compromiso2'] || item['FECHA COMPROMISO'] || item[key];
+          const s = cleanString(String(raw || '')).toLowerCase();
+          // Empty or N/A
+          if (!raw || s === '' || s === '-' || s === 'n/a' || s === 'na') return null; // Will become "Otros" below
+          // Text-based categories
+          if (s.includes('por definir') || s.includes('por confirmar') || s.includes('pendiente fecha') || s.includes('sin definir')) return 'Por Definir';
+          if (s.includes('finalizado') || s.includes('cerrado') || s.includes('terminado') || s.includes('completado')) return 'Finalizado';
+          // Try to parse as date
+          const d = parseDateString(raw);
+          if (!d) return null;
+          return { type: 'date', date: d, month: MONTH_NAMES_SHORT[d.getMonth()], year: d.getFullYear(), monthNum: d.getMonth() };
         }
 
         const val = item[key];
@@ -606,6 +626,77 @@ export default function App() {
       })
       .flat()
       .filter(v => v !== null && v !== undefined && v !== '');
+
+    // Deduplicate weekly values using normalization
+    if (activeTab === 'weekly' || isWeekly) {
+      // Check if this is a date column (contains date objects)
+      const dateItems = values.filter(v => typeof v === 'object' && v !== null && v.type === 'date');
+      if (dateItems.length > 0 && (key === 'Fecha Compromiso2' || key === 'FECHA COMPROMISO' || key.includes('Fecha Compromiso') || key.includes('FECHA'))) {
+        // Determine format: month only if same year, else "Mes-Año"
+        const years = new Set(dateItems.map(d => d.year));
+        const useYear = years.size > 1;
+        // Group by the label
+        const dateGroups = new Map();
+        dateItems.forEach(d => {
+          const label = useYear ? `${d.month}-${d.year}` : d.month;
+          const sortKey = d.year * 12 + d.monthNum;
+          if (!dateGroups.has(label)) {
+            dateGroups.set(label, { label, sortKey });
+          }
+        });
+        const dateLabels = [...dateGroups.values()].sort((a, b) => a.sortKey - b.sortKey).map(d => d.label);
+
+        // Deduplicate non-date values
+        const nonDateValues = values.filter(v => typeof v !== 'object' || v.type !== 'date');
+        const nonDateGrouped = new Map();
+        nonDateValues.forEach(v => {
+          const normalized = normalizeForGrouping(v);
+          if (!nonDateGrouped.has(normalized)) {
+            nonDateGrouped.set(normalized, v);
+          }
+        });
+
+        // Add "Otros" if there were null/empty/N/A values or unrecognized text
+        const hasEmpties = source.some(item => {
+          const raw = item['Fecha Compromiso2'] || item['FECHA COMPROMISO'] || item[key];
+          if (!raw) return true;
+          const s = cleanString(String(raw)).toLowerCase();
+          if (s === '' || s === '-' || s === 'n/a' || s === 'na') return true;
+          // Not a date, not a known category → goes to "Otros"
+          if (!s.includes('por definir') && !s.includes('por confirmar') && !s.includes('pendiente fecha') && !s.includes('sin definir') && !s.includes('finalizado') && !s.includes('cerrado') && !s.includes('terminado') && !s.includes('completado')) {
+            const d = parseDateString(raw);
+            if (!d) return true;
+          }
+          return false;
+        });
+
+        // Sort: dates first (chronological), then text categories, then "Otros" last
+        const textValues = [...nonDateGrouped.values()].filter(v => v !== 'Otros').sort((a, b) => {
+          const order = { 'Por Definir': 0, 'Finalizado': 1 };
+          return (order[a] ?? 99) - (order[b] ?? 99);
+        });
+
+        const result = [...dateLabels, ...textValues];
+        if (hasEmpties) result.push('Otros');
+        return result;
+      }
+
+      const grouped = new Map();
+      values.forEach(v => {
+        const normalized = normalizeForGrouping(v);
+        if (!grouped.has(normalized)) {
+          grouped.set(normalized, v);
+        }
+      });
+      return [...grouped.values()].sort((a, b) => {
+        const aSpecial = a === 'Sin fecha' || a === 'Otros' || a === 'Sin asignar';
+        const bSpecial = b === 'Sin fecha' || b === 'Otros' || b === 'Sin asignar';
+        if (aSpecial && !bSpecial) return 1;
+        if (!aSpecial && bSpecial) return -1;
+        return String(a).localeCompare(String(b), 'es', { sensitivity: 'base' });
+      });
+    }
+
     return Array.from(new Set(values)).sort();
   };
 
@@ -1169,6 +1260,78 @@ export default function App() {
     };
     reader.readAsBinaryString(file);
   };
+  const normalizeForGrouping = (str) => {
+    if (!str) return '';
+    return String(str)
+      .replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, '') // Remove zero-width and non-breaking spaces
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Remove accents/tilde
+      .replace(/[\u{1F7E0}-\u{1F7FF}\u{26AA}-\u{26AB}\u{1F534}-\u{1F535}\u{25CF}\u{2B24}]/gu, '') // Remove circle emoji
+      .replace(/[🔴🟡🟢🟠⚫⚪🔵]/g, '') // Remove common circle emojis
+      .replace(/[\u2018\u2019\u201A\u201B\u201C\u201D\u201E\u201F]/g, "'") // Normalize quotes
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  };
+
+  const ESTADO_CATEGORIES = ['En Proceso', 'Pendiente', 'Finalizado', 'Por Definir', 'Observado', 'Otros'];
+
+  const normalizeEstado = (raw) => {
+    if (!raw) return 'Sin estado';
+    const s = String(raw).trim().toLowerCase();
+    if (s.startsWith('finalizado') || s.startsWith('cerrado') || s.startsWith('terminado') || s.startsWith('implementado')) return 'Finalizado';
+    if (s.startsWith('en proceso') || s.startsWith('en curso')) return 'En Proceso';
+    if (s.startsWith('pendiente')) return 'Pendiente';
+    if (s.startsWith('observado') || s.startsWith('subsanar')) return 'Observado';
+    if (s.startsWith('por definir')) return 'Por Definir';
+    if (s.startsWith('bloqueado')) return 'Otros';
+    if (s.startsWith('cancelado') || s.startsWith('descartado')) return 'Otros';
+    const cut = String(raw).split(/\s*[-–—:()]\s*/)[0].trim();
+    return cut.length <= 25 ? (cut.charAt(0).toUpperCase() + cut.slice(1)) : 'Otros';
+  };
+
+  const cleanString = (str) => {
+    return String(str || '')
+      .replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const parseDateString = (v) => {
+    if (!v) return null;
+    if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+    if (typeof v === 'number') {
+      const d = new Date((v - 25569) * 86400 * 1000);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    const s = cleanString(String(v));
+    if (!s || s === '-' || s === 'N/A' || s === 'n/a') return null;
+    // DD/MM/YYYY or DD-MM-YYYY
+    let m = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (m) {
+      const d = new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
+      if (!isNaN(d.getTime())) return d;
+    }
+    // YYYY-MM-DD or YYYY/MM/DD
+    m = s.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (m) {
+      const d = new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
+      if (!isNaN(d.getTime())) return d;
+    }
+    // DD/MM/YY or DD-MM-YY
+    m = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})/);
+    if (m) {
+      const yr = parseInt(m[3]) >= 50 ? 1900 + parseInt(m[3]) : 2000 + parseInt(m[3]);
+      const d = new Date(yr, parseInt(m[2]) - 1, parseInt(m[1]));
+      if (!isNaN(d.getTime())) return d;
+    }
+    // Fallback: try native Date
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const MONTH_NAMES_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+
   const getFilterOptions = (field) => {
     let source = [];
     if (activeTab === 'trend') source = data?.trend || [];
@@ -1176,6 +1339,20 @@ export default function App() {
     else if (activeTab === 'demand') source = data?.demand || [];
     else if (activeTab === 'weekly') source = data?.weekly || [];
     else if (activeTab === 'demand2') source = demand2Data?.schedule || [];
+
+    if (activeTab === 'demand2' && (field === 'indicador' || field === 'gestor')) {
+      const grouped = new Map();
+      source.forEach(i => {
+        const raw = i[field];
+        if (!raw) return;
+        const normalized = normalizeForGrouping(raw);
+        if (!grouped.has(normalized)) {
+          grouped.set(normalized, raw); // Keep the first occurrence as the display value
+        }
+      });
+      return [...grouped.values()].sort();
+    }
+
     return [...new Set(source.map(i => i[field]))].filter(Boolean).sort();
   };
 
@@ -1466,17 +1643,53 @@ export default function App() {
 
       const matchWeeklyColumnFilters = Object.entries(weeklyColumnFilters).every(([key, value]) => {
         if (!value || value === 'Todos') return true;
+        // Estado: normalize to category
+        if (key === 'Estado') {
+          return normalizeEstado(item[key]) === value;
+        }
         // Responsable can be "Juan / Pedro" — match if any individual name matches
         if (key === 'Responsable') {
-          const raw = item['Responsable'] || item['LÍDER TÉCNICO'] || item['LIDER DEL PROYECTO'] || '';
-          const names = String(raw).split('/').map(n => n.trim());
-          return names.some(n => n === String(value).trim());
+          const raw = cleanString(item['Responsable'] || item['LÍDER TÉCNICO'] || item['LIDER DEL PROYECTO'] || '');
+          const names = raw.split('/').map(n => n.trim()).filter(Boolean);
+          return names.some(n => normalizeForGrouping(n) === normalizeForGrouping(value));
+        }
+        // Date columns: match by month-year (or just month), text keywords, or "Otros"
+        if (key === 'Fecha Compromiso2' || key === 'FECHA COMPROMISO' || key.includes('Fecha Compromiso') || key.includes('FECHA')) {
+          const raw = item['Fecha Compromiso2'] || item['FECHA COMPROMISO'] || item[key];
+          const s = cleanString(String(raw || '')).toLowerCase();
+          // Text-based categories
+          if (value === 'Por Definir') {
+            return s.includes('por definir') || s.includes('por confirmar') || s.includes('pendiente fecha') || s.includes('sin definir');
+          }
+          if (value === 'Finalizado') {
+            return s.includes('finalizado') || s.includes('cerrado') || s.includes('terminado') || s.includes('completado');
+          }
+          if (value === 'Otros') {
+            if (!raw || s === '' || s === '-' || s === 'n/a' || s === 'na') return true;
+            // Not a recognized category and not a parseable date
+            if (!s.includes('por definir') && !s.includes('por confirmar') && !s.includes('pendiente fecha') && !s.includes('sin definir') && !s.includes('finalizado') && !s.includes('cerrado') && !s.includes('terminado') && !s.includes('completado')) {
+              const d = parseDateString(raw);
+              return d === null;
+            }
+            return false;
+          }
+          // Month-Year or Month-only match: e.g. "Sep-2025" or "Sep"
+          const d = parseDateString(raw);
+          if (!d) return false;
+          // Parse the filter value
+          const monthMatch = value.match(/^(Ene|Feb|Mar|Abr|May|Jun|Jul|Ago|Sep|Oct|Nov|Dic)(?:-(\d{4}))?$/);
+          if (!monthMatch) return false;
+          const targetMonth = MONTH_NAMES_SHORT.indexOf(monthMatch[1]);
+          const targetYear = monthMatch[2] ? parseInt(monthMatch[2]) : null;
+          const itemMonth = d.getMonth();
+          const itemYear = d.getFullYear();
+          return itemMonth === targetMonth && (targetYear === null || itemYear === targetYear);
         }
         const strVal = String(item[key] || '').trim();
         if (value === 'Otros') {
           return strVal === '' || strVal === '-' || strVal === '0';
         }
-        return strVal === String(value);
+        return normalizeForGrouping(strVal) === normalizeForGrouping(String(value));
       });
 
       return matchMgmt && matchDimension && matchPortfolio && matchProject && matchChart && matchWeeklyColumnFilters;
@@ -2444,8 +2657,8 @@ export default function App() {
     const fullSchedule = demand2Data?.schedule || [];
     const schedule = fullSchedule.filter(p => {
       const matchGerencia = demand2GerenciaFilter ? (p.gerencia || 'Sin Gerencia') === demand2GerenciaFilter : true;
-      const matchGestor = demand2GestorFilter ? (p.gestor || 'Sin Gestor') === demand2GestorFilter : true;
-      const matchIndicador = demand2IndicadorFilter ? p.indicador === demand2IndicadorFilter : true;
+      const matchGestor = demand2GestorFilter ? normalizeForGrouping(p.gestor || 'Sin Gestor') === normalizeForGrouping(demand2GestorFilter) : true;
+      const matchIndicador = demand2IndicadorFilter ? normalizeForGrouping(p.indicador) === normalizeForGrouping(demand2IndicadorFilter) : true;
       return matchGerencia && matchGestor && matchIndicador;
     });
 
@@ -2598,44 +2811,8 @@ export default function App() {
       setDemand2GestorFilter(null);
     };
 
-    const hasActiveFilters = demand2GerenciaFilter !== null || demand2IndicadorFilter !== null || demand2GestorFilter !== null;
-    const activeFiltersUI = hasActiveFilters ? (
-      <div className="flex flex-wrap gap-2 items-center bg-corporate-dark/5 p-3 rounded-lg border border-corporate-dark/10 mb-6 mt-4">
-        <span className="text-[10px] font-bold text-corporate-dark uppercase tracking-widest mr-2">Filtros Activos:</span>
-        {demand2GerenciaFilter && (
-          <div className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
-            <span>Gerencia: {demand2GerenciaFilter}</span>
-            <button onClick={() => setDemand2GerenciaFilter(null)} className="hover:text-red-300 transition-colors">
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-        )}
-        {demand2IndicadorFilter && (
-          <div className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
-            <span>Indicador: {demand2IndicadorFilter}</span>
-            <button onClick={() => setDemand2IndicadorFilter(null)} className="hover:text-red-300 transition-colors">
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-        )}
-        {demand2GestorFilter && (
-          <div className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
-            <span>Gestor: {demand2GestorFilter}</span>
-            <button onClick={() => setDemand2GestorFilter(null)} className="hover:text-red-300 transition-colors">
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-        )}
-        <button onClick={clearFilters} className="text-xs text-corporate-dark hover:text-corporate-light underline ml-2 font-medium">
-          Limpiar todos
-        </button>
-      </div>
-    ) : null;
-
     return (
       <div className="space-y-5 pb-10">
-        {activeFiltersUI}
-
         {/* ── Header ── */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -3600,27 +3777,6 @@ export default function App() {
         value: filteredWeekly.filter(w => w['PROYECTO'] === name).length
       })).sort((a, b) => b.value - a.value).slice(0, 10);
 
-    // Normalize Estado: match known keywords at the start; long unknowns → 'Otros'
-    const KNOWN_ESTADO_PREFIXES = [
-      { keys: ['finalizado', 'cerrado', 'terminado', 'implementado'], label: 'Finalizado' },
-      { keys: ['en proceso', 'en curso'], label: 'En Proceso' },
-      { keys: ['pendiente'], label: 'Pendiente' },
-      { keys: ['observado'], label: 'Observado' },
-      { keys: ['por definir'], label: 'Por Definir' },
-      { keys: ['bloqueado'], label: 'Bloqueado' },
-      { keys: ['cancelado', 'descartado'], label: 'Cancelado' },
-    ];
-    const normalizeEstado = (raw) => {
-      if (!raw) return 'Sin estado';
-      const s = String(raw).trim().toLowerCase();
-      for (const { keys, label } of KNOWN_ESTADO_PREFIXES) {
-        if (keys.some(k => s.startsWith(k))) return label;
-      }
-      // Unknown: keep short values as-is, collapse long ones into 'Otros'
-      const cut = String(raw).split(/\s*[-–—:()]\s*/)[0].trim();
-      return cut.length <= 25 ? (cut.charAt(0).toUpperCase() + cut.slice(1)) : 'Otros';
-    };
-
     const estadosRawData = filteredWeekly.map(w => normalizeEstado(w['Estado']));
 
     const estadosMap = estadosRawData.reduce((acc, curr) => {
@@ -3632,7 +3788,7 @@ export default function App() {
     const COLORS_WEEKLY = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#9333ea', '#0891b2', '#f43f5e', '#8b5cf6', '#10b981', '#6b7280'];
     const getEstadoColor = (name) => {
       const s = (name || '').toLowerCase();
-      if (s.includes('finalizado') || s.includes('cerrado') || s.includes('terminado') || s.includes('implementado')) return '#16a34a';
+      if (s.includes('finalizado') || s.includes('cerrado')) return '#16a34a';
       if (s.includes('pendiente') || s.includes('atrasado')) return '#f59e0b';
       if (s.includes('proceso') || s.includes('curso')) return '#2563eb';
       if (s.includes('observado') || s.includes('subsanar')) return '#e11d48';
@@ -3784,7 +3940,7 @@ export default function App() {
             <table className="w-full text-left text-xs mb-0">
               <thead className="bg-gray-50/80 text-gray-500 uppercase font-black tracking-wider border-b border-gray-100">
                 <tr>
-                  <th className="px-6 py-4 group relative">
+                  <th className="px-6 py-4 group relative min-w-[250px]">
                     <div className="flex items-center justify-between">
                       <span>Proyecto</span>
                       <button onClick={(e) => handleFilterClick('PROYECTO', e, false, false, true)} className={cn(
@@ -3795,18 +3951,7 @@ export default function App() {
                       </button>
                     </div>
                   </th>
-                  <th className="px-6 py-4 group relative">
-                    <div className="flex items-center justify-between">
-                      <span>Cód. Plant</span>
-                      <button onClick={(e) => handleFilterClick('CÓDIGO DE PLANEAMIENTO', e, false, false, true)} className={cn(
-                        "p-0.5 rounded hover:bg-gray-200 transition-colors",
-                        weeklyColumnFilters['CÓDIGO DE PLANEAMIENTO'] ? "text-blue-600" : "text-gray-400"
-                      )}>
-                        <ChevronDown className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </th>
-                  <th className="px-6 py-4 group relative">
+                  <th className="px-6 py-4 group relative min-w-[350px]">
                     <div className="flex items-center justify-between">
                       <span>Pendiente</span>
                       <button onClick={(e) => handleFilterClick('Pendientes', e, false, false, true)} className={cn(
@@ -3817,7 +3962,7 @@ export default function App() {
                       </button>
                     </div>
                   </th>
-                  <th className="px-6 py-4 group relative">
+                  <th className="px-6 py-4 group relative min-w-[150px]">
                     <div className="flex items-center justify-between">
                       <span>Responsable / Líder</span>
                       <button onClick={(e) => handleFilterClick('Responsable', e, false, false, true)} className={cn(
@@ -3828,18 +3973,18 @@ export default function App() {
                       </button>
                     </div>
                   </th>
-                  <th className="px-6 py-4 group relative">
+                  <th className="px-6 py-4 group relative min-w-[120px]">
                     <div className="flex items-center justify-between">
                       <span>F. Compromiso</span>
-                      <button onClick={(e) => handleFilterClick('FECHA COMPROMISO', e, false, false, true)} className={cn(
+                      <button onClick={(e) => handleFilterClick('Fecha Compromiso2', e, false, false, true)} className={cn(
                         "p-0.5 rounded hover:bg-gray-200 transition-colors",
-                        weeklyColumnFilters['FECHA COMPROMISO'] ? "text-blue-600" : "text-gray-400"
+                        weeklyColumnFilters['Fecha Compromiso2'] ? "text-blue-600" : "text-gray-400"
                       )}>
                         <ChevronDown className="w-3 h-3" />
                       </button>
                     </div>
                   </th>
-                  <th className="px-6 py-4 group relative">
+                  <th className="px-6 py-4 group relative min-w-[130px]">
                     <div className="flex items-center justify-between">
                       <span>Estado</span>
                       <button onClick={(e) => handleFilterClick('Estado', e, false, false, true)} className={cn(
@@ -3854,19 +3999,23 @@ export default function App() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filteredWeekly.map((w, i) => {
-                  const excelDate = w['FECHA COMPROMISO'] || w['Fecha Compromiso2'];
-                  let dateStr = 'N/A';
-                  if (excelDate && typeof excelDate === 'number') {
-                    dateStr = new Date((excelDate - 25569) * 86400 * 1000).toLocaleDateString('es-CL');
+                  const rawDate = w['Fecha Compromiso2'] || w['FECHA COMPROMISO'];
+                  const d = parseDateString(rawDate);
+                  let dateStr;
+                  if (d) {
+                    dateStr = d.toLocaleDateString('es-CL');
+                  } else {
+                    const s = cleanString(String(rawDate || '')).toLowerCase();
+                    if (s.includes('por definir') || s.includes('por confirmar') || s.includes('pendiente fecha') || s.includes('sin definir')) dateStr = 'Por Definir';
+                    else if (s.includes('finalizado') || s.includes('cerrado') || s.includes('terminado')) dateStr = 'Finalizado';
+                    else dateStr = rawDate || 'N/A';
                   }
-                  const estado = (w['Estado'] || 'Sin estado');
-                  const isClosed = estado.toLowerCase().includes('cerrado') || estado.toLowerCase().includes('finalizado');
+                  const estado = normalizeEstado(w['Estado']);
                   return (
                     <tr key={i} className="hover:bg-gray-50/80 transition-colors">
                       <td className="px-6 py-4">
                         <div className="font-bold text-corporate-dark line-clamp-2 max-w-[200px]">{w['PROYECTO']}</div>
                       </td>
-                      <td className="px-6 py-4 font-mono text-gray-400 text-[10px]">{w['CÓDIGO DE PLANEAMIENTO'] || '-'}</td>
                       <td className="px-6 py-4">
                         <div className="text-gray-600 line-clamp-2 max-w-[300px]" title={w['Pendientes']}>{w['Pendientes'] || '-'}</div>
                       </td>
@@ -3875,11 +4024,11 @@ export default function App() {
                       <td className="px-6 py-4">
                         <span className={cn(
                           "px-2.5 py-1 rounded-full text-[10px] font-bold border whitespace-nowrap",
-                          isClosed ? "bg-green-50 text-green-700 border-green-200"
-                            : estado.toLowerCase().includes('pendiente') ? "bg-orange-50 text-orange-700 border-orange-200" :
+                          estado === 'Finalizado' ? "bg-green-50 text-green-700 border-green-200"
+                            : estado === 'Pendiente' || estado === 'Otros' ? "bg-orange-50 text-orange-700 border-orange-200" :
                               "bg-blue-50 text-blue-700 border-blue-200"
                         )}>
-                          {estado}
+                          {w['Estado'] || 'Sin estado'}
                         </span>
                       </td>
                     </tr>
@@ -4113,7 +4262,7 @@ export default function App() {
 
       {/* Main Dashboard Content */}
       <main className="flex-1 overflow-y-auto p-8 bg-[#f4f7f9] custom-scrollbar">
-        <div className="max-w-[1600px] mx-auto">
+        <div className={activeTab === 'weekly' ? 'w-full' : 'max-w-[1600px] mx-auto'}>
           {activeTab === 'demand' && renderDemandDashboard()}
           {activeTab === 'portfolio' && renderPortfolioDashboard()}
           {activeTab === 'trend' && renderTrendDashboard()}
