@@ -247,132 +247,183 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
     schedule.forEach((p, pi) => p.etapas.forEach((_, ei) => s.add(`${pi}-${ei}`)));
     return s;
   });
+  // Tooltip: { row, x, y }
+  const [tooltip, setTooltip] = React.useState(null);
 
   const toggleProject = (pi) => {
-    setExpanded(prev => {
-      const next = new Set(prev);
-      next.has(pi) ? next.delete(pi) : next.add(pi);
-      return next;
-    });
+    setExpanded(prev => { const n = new Set(prev); n.has(pi) ? n.delete(pi) : n.add(pi); return n; });
   };
-
   const toggleEtapa = (key) => {
-    setExpandedEtapas(prev => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
+    setExpandedEtapas(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   };
 
-  const COL_W = 34; // px per month column
+  const COL_W = 34;
+  const NAME_W = 220;
+  const IND_W  = 90;
+  const GER_W  = 120;
+  const PCT_W  = 80;  // combined % Plan / Real — NOT sticky
+  const INI_W  = 78;  // F. Inicio — NOT sticky
+  const FIN_W  = 78;  // F. Fin    — NOT sticky
+  // Sticky left positions
+  const IND_LEFT = NAME_W;
+  const GER_LEFT = NAME_W + IND_W;
+  const FIXED_W  = NAME_W + IND_W + GER_W;
+
   const hasGantt = allGanttCols.length > 0;
+  const totalTableW = FIXED_W + PCT_W + INI_W + FIN_W + allGanttCols.length * COL_W;
 
-  const minDate = hasGantt ? new Date(allGanttCols[0].year, allGanttCols[0].month, 1) : null;
-  const maxDate = hasGantt ? new Date(allGanttCols[allGanttCols.length - 1].year, allGanttCols[allGanttCols.length - 1].month + 1, 0) : null;
-  const totalMs = hasGantt ? (maxDate.getTime() - minDate.getTime()) : 1;
-
-  const toNum = (v) => {
-    const n = typeof v === 'number' ? v : parseFloat(v);
-    return isNaN(n) ? null : n;
-  };
-
-  const renderBar = (row, height) => {
-    if (!row.fechaInicio || !row.fechaFin || !minDate) return null;
+  // Gantt bar rendering using ganttColor per-cell approach (continuous bar)
+  const renderBar = (row) => {
+    if (!row.fechaInicio || !row.fechaFin || !hasGantt) return null;
     const start = new Date(row.fechaInicio);
-    const end = new Date(row.fechaFin);
+    const end   = new Date(row.fechaFin);
     if (isNaN(start) || isNaN(end) || end < start) return null;
 
-    const leftPct = ((start.getTime() - minDate.getTime()) / totalMs) * 100;
-    const widthPct = ((end.getTime() - start.getTime()) / totalMs) * 100;
+    const minDate = new Date(Date.UTC(allGanttCols[0].year, allGanttCols[0].month, 1));
+    const maxDate = new Date(Date.UTC(allGanttCols[allGanttCols.length - 1].year, allGanttCols[allGanttCols.length - 1].month + 1, 0));
+    const totalMs = maxDate.getTime() - minDate.getTime();
 
+    const leftPct  = ((start.getTime() - minDate.getTime()) / totalMs) * 100;
+    const widthPct = ((end.getTime()   - start.getTime())   / totalMs) * 100;
     if (leftPct > 100 || leftPct + widthPct < 0) return null;
+
     const l = Math.max(0, leftPct);
     const r = Math.min(100, leftPct + widthPct);
-    const w = r - l;
+    const w = Math.max(r - l, 0.3);
 
-    const plan = toNum(row.planPct);
-    const exec = toNum(row.execPct);
+    const toNum = (v) => { const n = typeof v === 'number' ? v : parseFloat(v); return isNaN(n) ? null : n; };
+    const plan  = toNum(row.planPct);
+    const exec  = toNum(row.execPct);
     const planF = plan !== null ? (plan <= 1.01 ? plan : plan / 100) : 0;
     const execF = exec !== null ? (exec <= 1.01 ? exec : exec / 100) : 0;
 
-    const minW = w < 0.5 ? 0.5 : w; // ensure min width for very short tasks
-
     return (
-      <div style={{ position: 'absolute', left: `${l}%`, width: `${minW}%`, minWidth: '4px', height: '100%', top: 0, display: 'flex', alignItems: 'center', zIndex: 5 }}>
-
-        {row.fechaInicioStr !== row.fechaFinStr && (
-          <span style={{ position: 'absolute', right: '100%', marginRight: '6px', fontSize: '9px', color: '#4b5563', fontWeight: 600, whiteSpace: 'nowrap' }}>
-            {row.fechaInicioStr}
-          </span>
-        )}
-
-        <div style={{ position: 'relative', height: '14px', width: '100%', backgroundColor: '#d1d5db', borderRadius: '4px', overflow: 'hidden', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.1)' }}>
+      <div
+        style={{ position: 'absolute', left: `${l}%`, width: `${w}%`, minWidth: 4, top: '50%', transform: 'translateY(-50%)', height: 14, cursor: 'pointer', zIndex: 5 }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setTooltip(prev => prev?.row === row ? null : { row, x: e.clientX, y: e.clientY });
+        }}
+      >
+        <div style={{ position: 'relative', height: '100%', backgroundColor: '#d1d5db', borderRadius: 4, overflow: 'hidden', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.1)' }}>
           <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${Math.min(100, planF * 100)}%`, backgroundColor: '#86efac', zIndex: 1 }} />
-          <div style={{ position: 'absolute', left: 0, top: '25%', height: '50%', width: `${Math.min(100, execF * 100)}%`, backgroundColor: '#16a34a', zIndex: 2, borderRadius: '0 4px 4px 0' }} />
+          <div style={{ position: 'absolute', left: 0, top: '25%', height: '50%', width: `${Math.min(100, execF * 100)}%`, backgroundColor: '#16a34a', zIndex: 2, borderRadius: '0 3px 3px 0' }} />
         </div>
-
-        <span style={{ position: 'absolute', left: '100%', marginLeft: '6px', fontSize: '9px', color: '#4b5563', fontWeight: 600, whiteSpace: 'nowrap' }}>
-          {row.fechaFinStr}
-        </span>
-
       </div>
     );
   };
 
-  const LEFT_COLS = [
-    { label: 'Indicador', w: 90, left: 210 },
-    { label: 'Gerencia', w: 110, left: 300 },
-    { label: '% Plan', w: 56, left: 410 },
-    { label: '% Real', w: 56, left: 466 },
-    { label: 'F. Inicio', w: 78, left: 522 },
-    { label: 'F. Fin', w: 78, left: 600 },
-  ];
-  const NAME_W = 210;
-  const totalW = NAME_W + LEFT_COLS.reduce((a, c) => a + c.w, 0) + allGanttCols.length * COL_W;
-
-  const thStyle = (w) => ({
-    minWidth: w, width: w, padding: '6px 6px', textAlign: 'center',
+  const thBase = (w, extra = {}) => ({
+    minWidth: w, width: w, padding: '5px 6px', textAlign: 'center',
     borderRight: '1px solid #2d4f7a', fontSize: '10px', fontWeight: 700,
-    whiteSpace: 'nowrap', overflow: 'hidden',
+    whiteSpace: 'nowrap', overflow: 'hidden', ...extra,
   });
-  const tdStyle = (w, extra = {}) => ({
-    minWidth: w, width: w, padding: '4px 6px', borderRight: '1px solid #e5e7eb',
-    fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-    ...extra,
+  const tdBase = (w, extra = {}) => ({
+    minWidth: w, width: w, maxWidth: w, padding: '3px 6px', borderRight: '1px solid #e5e7eb',
+    fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...extra,
   });
+
+  const YEAR_H  = 28;
+  const MONTH_H = 22;
+
+  const renderRow = (row, depth, rowBg, borderColor, rowHeight, extraNameStyle = {}) => {
+    const bar = renderBar(row);
+    return (
+      <>
+        {/* Name cell */}
+        <td style={{ ...tdBase(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: rowBg, borderBottom: `1px solid ${borderColor}`, fontWeight: depth === 0 ? 700 : depth === 1 ? 600 : 400, color: depth === 0 ? '#1e3a5f' : depth === 1 ? '#374151' : '#6b7280', paddingLeft: depth === 0 ? 8 : depth === 1 ? 22 : 38, height: rowHeight, ...extraNameStyle }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', fontSize: depth === 2 ? 9 : 10 }} title={row.nombre}>{row.nombre}</span>
+        </td>
+        {/* Indicador */}
+        <td style={{ ...tdBase(IND_W), position: 'sticky', left: IND_LEFT, zIndex: 10, backgroundColor: rowBg, borderBottom: `1px solid ${borderColor}`, textAlign: 'center' }}>
+          {depth === 0 && row.indicador ? (
+            <span className={`px-1.5 py-0.5 rounded border font-bold ${indicadorInfo(row.indicador).badge}`} style={{ fontSize: 8, whiteSpace: 'nowrap' }}>
+              {indicadorInfo(row.indicador).label}
+            </span>
+          ) : null}
+        </td>
+        {/* Gerencia */}
+        <td style={{ ...tdBase(GER_W), position: 'sticky', left: GER_LEFT, zIndex: 10, backgroundColor: rowBg, borderBottom: `1px solid ${borderColor}`, color: '#4b5563', fontSize: 9 }} title={row.gerencia || ''}>
+          {depth === 0 ? (row.gerencia || '') : ''}
+        </td>
+        {/* Gantt area */}
+        {hasGantt && (
+          <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, width: allGanttCols.length * COL_W, backgroundColor: 'transparent', borderBottom: `1px solid ${borderColor}`, height: rowHeight }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', pointerEvents: 'none' }}>
+              {allGanttCols.map((_, i) => (
+                <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: '1px dashed #e2e8f0' }} />
+              ))}
+            </div>
+            {bar}
+          </td>
+        )}
+      </>
+    );
+  };
 
   return (
-    <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
-      <table style={{ borderCollapse: 'collapse', minWidth: totalW, tableLayout: 'fixed' }}>
-        <thead style={{ position: 'sticky', top: 0, zIndex: 20 }}>
+    <div
+      style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '72vh', position: 'relative' }}
+      onClick={() => setTooltip(null)}
+    >
+      {/* Tooltip */}
+      {tooltip && (
+        <div
+          style={{ position: 'fixed', top: tooltip.y + 12, left: tooltip.x + 12, zIndex: 9999, backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: '10px 14px', minWidth: 200, fontSize: 11 }}
+          onClick={e => e.stopPropagation()}
+        >
+          <div style={{ fontWeight: 700, color: '#1e3a5f', marginBottom: 6, fontSize: 12, lineHeight: 1.3 }}>{tooltip.row.nombre}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px' }}>
+            <div style={{ color: '#6b7280' }}>% Planificado</div>
+            <div style={{ fontWeight: 700, color: '#1e3a5f' }}>{pctStr(tooltip.row.planPct)}</div>
+            <div style={{ color: '#6b7280' }}>% Completado</div>
+            <div style={{ fontWeight: 700, color: '#15803d' }}>{pctStr(tooltip.row.execPct)}</div>
+            <div style={{ color: '#6b7280' }}>F. Inicio</div>
+            <div style={{ fontWeight: 600, color: '#374151' }}>{tooltip.row.fechaInicioStr || '-'}</div>
+            <div style={{ color: '#6b7280' }}>F. Fin</div>
+            <div style={{ fontWeight: 600, color: '#374151' }}>{tooltip.row.fechaFinStr || '-'}</div>
+          </div>
+          <button onClick={() => setTooltip(null)} style={{ position: 'absolute', top: 6, right: 8, background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 14, lineHeight: 1 }}>✕</button>
+        </div>
+      )}
+
+      <table style={{ borderCollapse: 'collapse', minWidth: totalTableW, tableLayout: 'fixed' }}>
+        <thead>
+          {/* Year row */}
           {Object.keys(yearGroups).length > 0 && (
-            <tr style={{ backgroundColor: '#1e3a5f', color: 'white' }}>
-              <th style={{ ...thStyle(NAME_W), textAlign: 'left', position: 'sticky', left: 0, zIndex: 30, backgroundColor: '#1e3a5f' }}>
-                Proyecto / Etapa / Actividad
+            <tr style={{ backgroundColor: '#1e3a5f', color: 'white', position: 'sticky', top: 0, zIndex: 25 }}>
+              <th style={{ ...thBase(NAME_W), textAlign: 'left', position: 'sticky', left: 0, zIndex: 35, backgroundColor: '#1e3a5f', height: YEAR_H }}>
+                Proyecto / Etapa
               </th>
-              {LEFT_COLS.map((c, i) => (
-                <th key={i} style={{ ...thStyle(c.w), position: 'sticky', left: c.left, zIndex: 30, backgroundColor: '#1e3a5f' }}>{c.label}</th>
-              ))}
+              <th style={{ ...thBase(IND_W), position: 'sticky', left: IND_LEFT, zIndex: 35, backgroundColor: '#1e3a5f', height: YEAR_H }}>Indicador</th>
+              <th style={{ ...thBase(GER_W), position: 'sticky', left: GER_LEFT, zIndex: 35, backgroundColor: '#1e3a5f', height: YEAR_H }}>Gerencia</th>
+              <th style={{ ...thBase(PCT_W), backgroundColor: '#1e3a5f', height: YEAR_H }}>% Plan / Real</th>
+              <th style={{ ...thBase(INI_W), backgroundColor: '#1e3a5f', height: YEAR_H }}>F. Inicio</th>
+              <th style={{ ...thBase(FIN_W), backgroundColor: '#1e3a5f', height: YEAR_H }}>F. Fin</th>
               {Object.entries(yearGroups).map(([year, cols]) => (
-                <th key={year} colSpan={cols.length} style={{ ...thStyle(cols.length * COL_W), borderRight: '2px solid #2d4f7a' }}>
+                <th key={year} colSpan={cols.length} style={{ ...thBase(cols.length * COL_W), borderRight: '2px solid #2d4f7a', height: YEAR_H }}>
                   {year}
                 </th>
               ))}
             </tr>
           )}
-          <tr style={{ backgroundColor: '#2d4f7a', color: 'white' }}>
-            <th style={{ ...thStyle(NAME_W), textAlign: 'left', position: 'sticky', left: 0, zIndex: 30, backgroundColor: '#2d4f7a' }} />
-            {LEFT_COLS.map((c, i) => <th key={i} style={{ ...thStyle(c.w), position: 'sticky', left: c.left, zIndex: 30, backgroundColor: '#2d4f7a' }} />)}
+          {/* Month row */}
+          <tr style={{ backgroundColor: '#2d4f7a', color: 'white', position: 'sticky', top: Object.keys(yearGroups).length > 0 ? YEAR_H : 0, zIndex: 25 }}>
+            <th style={{ ...thBase(NAME_W), textAlign: 'left', position: 'sticky', left: 0, zIndex: 35, backgroundColor: '#2d4f7a', height: MONTH_H }} />
+            <th style={{ ...thBase(IND_W), position: 'sticky', left: IND_LEFT, zIndex: 35, backgroundColor: '#2d4f7a', height: MONTH_H }} />
+            <th style={{ ...thBase(GER_W), position: 'sticky', left: GER_LEFT, zIndex: 35, backgroundColor: '#2d4f7a', height: MONTH_H }} />
+            <th style={{ ...thBase(PCT_W), backgroundColor: '#2d4f7a', height: MONTH_H }} />
+            <th style={{ ...thBase(INI_W), backgroundColor: '#2d4f7a', height: MONTH_H }} />
+            <th style={{ ...thBase(FIN_W), backgroundColor: '#2d4f7a', height: MONTH_H }} />
             {allGanttCols.map((col, i) => (
-              <th key={i} style={{ ...thStyle(COL_W), fontSize: '8px', padding: '4px 2px', borderRight: '1px solid #475569' }}>
+              <th key={i} style={{ ...thBase(COL_W), fontSize: '8px', padding: '3px 2px', borderRight: '1px solid #475569', height: MONTH_H }}>
                 {MONTH_ABBR[col.month] || col.label}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody style={{ backgroundColor: '#ffffff' }}>
+        <tbody>
           {schedule.map((project, pi) => {
-            const ic = indicadorInfo(project.indicador);
             const isExpanded = expanded.has(pi);
             const hasChildren = project.etapas.length > 0;
             const rowBg = '#f8fafc';
@@ -380,40 +431,36 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
             return (
               <React.Fragment key={pi}>
                 <tr
-                  style={{ cursor: hasChildren ? 'pointer' : 'default', height: 48 }}
+                  style={{ cursor: hasChildren ? 'pointer' : 'default', height: 40, backgroundColor: rowBg }}
                   onClick={() => hasChildren && toggleProject(pi)}
                 >
-                  <td style={{ ...tdStyle(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: rowBg, fontWeight: 700, color: '#1e3a5f', borderBottom: '1px solid #cbd5e1' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      {hasChildren && (
-                        <span style={{ fontSize: 10, color: '#64748b', flexShrink: 0, width: 12 }}>
-                          {isExpanded ? '▼' : '▶'}
-                        </span>
-                      )}
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={project.nombre}>
-                        {project.nombre}
-                      </span>
+                  {/* Name with expand arrow */}
+                  <td style={{ ...tdBase(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1', fontWeight: 700, color: '#1e3a5f', height: 40 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                      {hasChildren && <span style={{ fontSize: 10, color: '#64748b', flexShrink: 0, width: 12 }}>{isExpanded ? '▼' : '▶'}</span>}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }} title={project.nombre}>{project.nombre}</span>
                     </div>
                   </td>
-                  <td style={{ ...tdStyle(LEFT_COLS[0].w), textAlign: 'center', position: 'sticky', left: LEFT_COLS[0].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1' }}>
-                    <span className={cn('px-1.5 py-0.5 rounded border font-bold', ic.badge)} style={{ fontSize: 8, whiteSpace: 'nowrap' }}>
-                      {ic.label}
-                    </span>
+                  <td style={{ ...tdBase(IND_W), position: 'sticky', left: IND_LEFT, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1', textAlign: 'center' }}>
+                    {project.indicador ? (
+                      <span className={`px-1.5 py-0.5 rounded border font-bold ${indicadorInfo(project.indicador).badge}`} style={{ fontSize: 8, whiteSpace: 'nowrap' }}>
+                        {indicadorInfo(project.indicador).label}
+                      </span>
+                    ) : null}
                   </td>
-                  <td style={{ ...tdStyle(LEFT_COLS[1].w), color: '#4b5563', position: 'sticky', left: LEFT_COLS[1].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1' }} title={project.gerencia}>{project.gerencia || '-'}</td>
-                  <td style={{ ...tdStyle(LEFT_COLS[2].w), textAlign: 'center', fontWeight: 700, color: '#1e3a5f', position: 'sticky', left: LEFT_COLS[2].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1' }}>{pctStr(project.planPct)}</td>
-                  <td style={{ ...tdStyle(LEFT_COLS[3].w), textAlign: 'center', fontWeight: 700, color: '#15803d', position: 'sticky', left: LEFT_COLS[3].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1' }}>{pctStr(project.execPct)}</td>
-                  <td style={{ ...tdStyle(LEFT_COLS[4].w), textAlign: 'center', color: '#6b7280', fontSize: 9, position: 'sticky', left: LEFT_COLS[4].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1' }}>{project.fechaInicioStr || '-'}</td>
-                  <td style={{ ...tdStyle(LEFT_COLS[5].w), textAlign: 'center', color: '#6b7280', fontSize: 9, position: 'sticky', left: LEFT_COLS[5].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1' }}>{project.fechaFinStr || '-'}</td>
-
+                  <td style={{ ...tdBase(GER_W), position: 'sticky', left: GER_LEFT, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1', color: '#4b5563', fontSize: 9 }} title={project.gerencia || ''}>{project.gerencia || ''}</td>
+                  <td style={{ ...tdBase(PCT_W), textAlign: 'center', borderBottom: '1px solid #cbd5e1', height: 40 }}>
+                    <div style={{ fontWeight: 700, color: '#1e3a5f', fontSize: 10 }}>{pctStr(project.planPct)}</div>
+                    <div style={{ fontWeight: 700, color: '#15803d', fontSize: 10 }}>{pctStr(project.execPct)}</div>
+                  </td>
+                  <td style={{ ...tdBase(INI_W), textAlign: 'center', color: '#6b7280', fontSize: 9, borderBottom: '1px solid #cbd5e1', height: 40 }}>{project.fechaInicioStr || '-'}</td>
+                  <td style={{ ...tdBase(FIN_W), textAlign: 'center', color: '#6b7280', fontSize: 9, borderBottom: '1px solid #cbd5e1', height: 40 }}>{project.fechaFinStr || '-'}</td>
                   {hasGantt && (
-                    <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, width: allGanttCols.length * COL_W, backgroundColor: 'transparent', borderBottom: '1px solid #cbd5e1' }}>
+                    <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, width: allGanttCols.length * COL_W, borderBottom: '1px solid #cbd5e1', height: 40 }}>
                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', pointerEvents: 'none' }}>
-                        {allGanttCols.map((_, i) => (
-                          <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: '1px dashed #cbd5e1', opacity: 0.5 }} />
-                        ))}
+                        {allGanttCols.map((_, i) => <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: '1px dashed #e2e8f0' }} />)}
                       </div>
-                      {renderBar(project, 48)}
+                      {renderBar(project)}
                     </td>
                   )}
                 </tr>
@@ -423,80 +470,62 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
                   const etapaExpanded = expandedEtapas.has(etapaKey);
                   const hasActs = etapa.actividades && etapa.actividades.length > 0;
                   const showEtapaRow = !!etapa.nombre;
-                  const rowBg = '#ffffff';
 
                   return (
                     <React.Fragment key={etapaKey}>
                       {showEtapaRow && (
-                        <tr
-                          style={{ cursor: hasActs ? 'pointer' : 'default', height: 44 }}
-                          onClick={() => hasActs && toggleEtapa(etapaKey)}
-                        >
-                          <td style={{ ...tdStyle(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: rowBg, paddingLeft: 24, borderBottom: '1px solid #e2e8f0' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {hasActs && (
-                                <span style={{ fontSize: 9, color: '#94a3b8', flexShrink: 0, width: 10 }}>
-                                  {etapaExpanded ? '▼' : '▶'}
-                                </span>
-                              )}
+                        <tr style={{ cursor: hasActs ? 'pointer' : 'default', height: 36, backgroundColor: '#ffffff' }} onClick={() => hasActs && toggleEtapa(etapaKey)}>
+                          <td style={{ ...tdBase(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0', paddingLeft: 22, fontWeight: 600, color: '#374151', height: 36 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                              {hasActs && <span style={{ fontSize: 9, color: '#94a3b8', flexShrink: 0, width: 10 }}>{etapaExpanded ? '▼' : '▶'}</span>}
                               <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#64748b', flexShrink: 0 }} />
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#374151', fontWeight: 600 }} title={etapa.nombre}>
-                                {etapa.nombre}
-                              </span>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }} title={etapa.nombre}>{etapa.nombre}</span>
                             </div>
                           </td>
-                          <td style={{ ...tdStyle(LEFT_COLS[0].w), position: 'sticky', left: LEFT_COLS[0].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #e2e8f0' }} />
-                          <td style={{ ...tdStyle(LEFT_COLS[1].w), position: 'sticky', left: LEFT_COLS[1].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #e2e8f0' }} />
-                          <td style={{ ...tdStyle(LEFT_COLS[2].w), textAlign: 'center', fontWeight: 600, color: '#1e3a5f', fontSize: 9, position: 'sticky', left: LEFT_COLS[2].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #e2e8f0' }}>{pctStr(etapa.planPct)}</td>
-                          <td style={{ ...tdStyle(LEFT_COLS[3].w), textAlign: 'center', fontWeight: 600, color: '#15803d', fontSize: 9, position: 'sticky', left: LEFT_COLS[3].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #e2e8f0' }}>{pctStr(etapa.execPct)}</td>
-                          <td style={{ ...tdStyle(LEFT_COLS[4].w), textAlign: 'center', color: '#9ca3af', fontSize: 9, position: 'sticky', left: LEFT_COLS[4].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #e2e8f0' }}>{etapa.fechaInicioStr || '-'}</td>
-                          <td style={{ ...tdStyle(LEFT_COLS[5].w), textAlign: 'center', color: '#9ca3af', fontSize: 9, position: 'sticky', left: LEFT_COLS[5].left, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #e2e8f0' }}>{etapa.fechaFinStr || '-'}</td>
-
-                          {hasGantt && (
-                            <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, width: allGanttCols.length * COL_W, backgroundColor: 'transparent', borderBottom: '1px solid #e2e8f0' }}>
+                          <td style={{ ...tdBase(IND_W), position: 'sticky', left: IND_LEFT, zIndex: 10, backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0' }} />
+                          <td style={{ ...tdBase(GER_W), position: 'sticky', left: GER_LEFT, zIndex: 10, backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0' }} />
+                          <td style={{ ...tdBase(PCT_W), textAlign: 'center', borderBottom: '1px solid #e2e8f0', height: 36 }}>
+                            <div style={{ fontWeight: 600, color: '#1e3a5f', fontSize: 9 }}>{pctStr(etapa.planPct)}</div>
+                            <div style={{ fontWeight: 600, color: '#15803d', fontSize: 9 }}>{pctStr(etapa.execPct)}</div>
+                          </td>
+                          <td style={{ ...tdBase(INI_W), textAlign: 'center', color: '#9ca3af', fontSize: 9, borderBottom: '1px solid #e2e8f0', height: 36 }}>{etapa.fechaInicioStr || '-'}</td>
+                          <td style={{ ...tdBase(FIN_W), textAlign: 'center', color: '#9ca3af', fontSize: 9, borderBottom: '1px solid #e2e8f0', height: 36 }}>{etapa.fechaFinStr || '-'}</td>
+                            <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, borderBottom: '1px solid #e2e8f0', height: 36 }}>
                               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', pointerEvents: 'none' }}>
-                                {allGanttCols.map((_, i) => (
-                                  <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: '1px dashed #cbd5e1', opacity: 0.5 }} />
-                                ))}
+                                {allGanttCols.map((_, i) => <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: '1px dashed #e2e8f0' }} />)}
                               </div>
-                              {renderBar(etapa, 44)}
+                              {renderBar(etapa)}
                             </td>
                           )}
                         </tr>
                       )}
 
-                      {(etapaExpanded || !showEtapaRow) && hasActs && etapa.actividades.map((act, ai) => {
-                        const actBg = '#ffffff';
-                        return (
-                          <tr key={`${etapaKey}-${ai}`} style={{ height: 40 }}>
-                            <td style={{ ...tdStyle(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: actBg, paddingLeft: showEtapaRow ? 44 : 28, borderBottom: '1px solid #f1f5f9' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                                <div style={{ width: 4, height: 4, borderRadius: '50%', backgroundColor: '#cbd5e1', flexShrink: 0 }} />
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#6b7280', fontSize: 9 }} title={act.nombre}>
-                                  {act.nombre}
-                                </span>
+                      {(etapaExpanded || !showEtapaRow) && hasActs && etapa.actividades.map((act, ai) => (
+                        <tr key={`${etapaKey}-${ai}`} style={{ height: 32, backgroundColor: '#ffffff' }}>
+                          <td style={{ ...tdBase(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: '#ffffff', borderBottom: '1px solid #f1f5f9', paddingLeft: showEtapaRow ? 40 : 26, color: '#6b7280', fontSize: 9, height: 32 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <div style={{ width: 4, height: 4, borderRadius: '50%', backgroundColor: '#cbd5e1', flexShrink: 0 }} />
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={act.nombre}>{act.nombre}</span>
+                            </div>
+                          </td>
+                          <td style={{ ...tdBase(IND_W), position: 'sticky', left: IND_LEFT, zIndex: 10, backgroundColor: '#ffffff', borderBottom: '1px solid #f1f5f9' }} />
+                          <td style={{ ...tdBase(GER_W), position: 'sticky', left: GER_LEFT, zIndex: 10, backgroundColor: '#ffffff', borderBottom: '1px solid #f1f5f9' }} />
+                          <td style={{ ...tdBase(PCT_W), textAlign: 'center', borderBottom: '1px solid #f1f5f9', height: 32 }}>
+                            <div style={{ color: '#1e3a5f', fontSize: 9 }}>{pctStr(act.planPct)}</div>
+                            <div style={{ color: '#15803d', fontSize: 9 }}>{pctStr(act.execPct)}</div>
+                          </td>
+                          <td style={{ ...tdBase(INI_W), textAlign: 'center', color: '#9ca3af', fontSize: 9, borderBottom: '1px solid #f1f5f9', height: 32 }}>{act.fechaInicioStr || '-'}</td>
+                          <td style={{ ...tdBase(FIN_W), textAlign: 'center', color: '#9ca3af', fontSize: 9, borderBottom: '1px solid #f1f5f9', height: 32 }}>{act.fechaFinStr || '-'}</td>
+                          {hasGantt && (
+                            <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, borderBottom: '1px solid #f1f5f9', height: 32 }}>
+                              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', pointerEvents: 'none' }}>
+                                {allGanttCols.map((_, i) => <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: '1px dashed #e2e8f0' }} />)}
                               </div>
+                              {renderBar(act)}
                             </td>
-                            <td style={{ ...tdStyle(LEFT_COLS[0].w), position: 'sticky', left: LEFT_COLS[0].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }} />
-                            <td style={{ ...tdStyle(LEFT_COLS[1].w), position: 'sticky', left: LEFT_COLS[1].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }} />
-                            <td style={{ ...tdStyle(LEFT_COLS[2].w), textAlign: 'center', color: '#1e3a5f', fontSize: 9, position: 'sticky', left: LEFT_COLS[2].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }}>{pctStr(act.planPct)}</td>
-                            <td style={{ ...tdStyle(LEFT_COLS[3].w), textAlign: 'center', color: '#15803d', fontSize: 9, position: 'sticky', left: LEFT_COLS[3].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }}>{pctStr(act.execPct)}</td>
-                            <td style={{ ...tdStyle(LEFT_COLS[4].w), textAlign: 'center', color: '#9ca3af', fontSize: 9, position: 'sticky', left: LEFT_COLS[4].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }}>{act.fechaInicioStr || '-'}</td>
-                            <td style={{ ...tdStyle(LEFT_COLS[5].w), textAlign: 'center', color: '#9ca3af', fontSize: 9, position: 'sticky', left: LEFT_COLS[5].left, zIndex: 10, backgroundColor: actBg, borderBottom: '1px solid #f1f5f9' }}>{act.fechaFinStr || '-'}</td>
-
-                            {hasGantt && (
-                              <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, width: allGanttCols.length * COL_W, backgroundColor: 'transparent', borderBottom: '1px solid #f1f5f9' }}>
-                                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', pointerEvents: 'none' }}>
-                                  {allGanttCols.map((_, i) => (
-                                    <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: '1px dashed #cbd5e1', opacity: 0.5 }} />
-                                  ))}
-                                </div>
-                                {renderBar(act, 40)}
-                              </td>
-                            )}
-                          </tr>
-                        )
-                      })}
+                          )}
+                        </tr>
+                      ))}
                     </React.Fragment>
                   );
                 })}
@@ -508,6 +537,7 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
     </div>
   );
 }
+
 
 // --- Main App ---
 
@@ -970,7 +1000,11 @@ export default function App() {
         const toDate = (v) => {
           if (!v) return null;
           if (v instanceof Date) return v;
-          if (typeof v === 'number' && v > 1000) return new Date((v - 25569) * 86400 * 1000);
+          if (typeof v === 'number' && v > 1000) {
+            // Excel serial → UTC date (avoids timezone day-shift)
+            const ms = Math.round((v - 25569) * 86400 * 1000);
+            return new Date(ms);
+          }
           if (typeof v === 'string') {
             const d = new Date(v);
             return isNaN(d.getTime()) ? null : d;
@@ -980,7 +1014,11 @@ export default function App() {
         const toDateStr = (v) => {
           const d = toDate(v);
           if (!d) return null;
-          return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          // Format using UTC values to avoid timezone shift
+          const day   = String(d.getUTCDate()).padStart(2, '0');
+          const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+          const year  = d.getUTCFullYear();
+          return `${day}/${month}/${year}`;
         };
         const toNum = (v) => {
           if (v === null || v === undefined) return null;
@@ -990,6 +1028,61 @@ export default function App() {
         const cellStr = (v) => (v !== null && v !== undefined ? String(v).trim() : '');
 
         const MONTH_MAP = { ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5, jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11 };
+
+        // ── Step 0: Parse Table 1 (Proyectos_DE) — the general project list ──
+        // This table starts near the top of the sheet and has all projects,
+        // including "No Iniciado" ones that may not appear in Table 2.
+        // We use it to supplement Table 2 with any missing projects.
+        const table1Projects = []; // { nombre, indicador, gerencia, gestor, fechaInicio, fechaFin, ... }
+
+        // Find the first header row that has "PROYECTO" or "Nombre del Proyecto"
+        // AND an "Indicador" column — this is Table 1
+        let t1HeaderIdx = -1;
+        for (let r = 0; r < Math.min(allRows.length, 30); r++) {
+          const row = allRows[r];
+          if (!row) continue;
+          const cells = row.map(c => cellStr(c).toLowerCase());
+          const hasProj = cells.some(c => c === 'proyecto' || c.includes('nombre del proyecto'));
+          const hasInd  = cells.some(c => c === 'indicador' || c.includes('indicador'));
+          if (hasProj && hasInd) { t1HeaderIdx = r; break; }
+        }
+
+        if (t1HeaderIdx !== -1) {
+          const t1h = (allRows[t1HeaderIdx] || []).map(c => cellStr(c));
+          const t1FindCol = (...kws) => t1h.findIndex(h =>
+            typeof h === 'string' && kws.some(k => h.toLowerCase().replace(/[\s\-_]/g,'').includes(k.toLowerCase().replace(/[\s\-_]/g,'')))
+          );
+          const t1ColInd   = t1FindCol('Indicador');
+          const t1ColProj  = t1FindCol('PROYECTO','NombreProyecto','Proyecto');
+          const t1ColGer   = t1FindCol('Gerencia','GerenciaL');
+          const t1ColGest  = t1FindCol('Gestor','Responsable');
+          const t1ColIni   = t1FindCol('FechaInicio','Inicio','FInicio');
+          const t1ColFin   = t1FindCol('FechaFin','Fin','FFin');
+
+          for (let r = t1HeaderIdx + 1; r < allRows.length; r++) {
+            const row = allRows[r];
+            if (!row) continue;
+            if (row.filter(c => c !== null && c !== undefined && c !== '').length === 0) break;
+            const rawProj = t1ColProj >= 0 ? row[t1ColProj] : null;
+            const rawInd  = t1ColInd  >= 0 ? row[t1ColInd]  : null;
+            if (!rawProj) continue;
+            const nombre = cellStr(rawProj);
+            if (!nombre) continue;
+            const indRaw = rawInd ? cellStr(rawInd).replace(/[●•·]+/g,'').trim() : '';
+            const rawIni = t1ColIni >= 0 ? row[t1ColIni] : null;
+            const rawFin = t1ColFin >= 0 ? row[t1ColFin] : null;
+            table1Projects.push({
+              nombre,
+              indicador:     indRaw,
+              gerencia:      t1ColGer  >= 0 && row[t1ColGer]  ? cellStr(row[t1ColGer])  : '',
+              gestor:        t1ColGest >= 0 && row[t1ColGest] ? cellStr(row[t1ColGest]) : '',
+              fechaInicio:   toDate(rawIni),
+              fechaFin:      toDate(rawFin),
+              fechaInicioStr: toDateStr(rawIni),
+              fechaFinStr:    toDateStr(rawFin),
+            });
+          }
+        }
 
         // ── Step 1: Find the second table (avances + cronograma) ──────────────
         // Strategy: scan ALL rows, find the one that has the most "useful" columns
@@ -1107,7 +1200,18 @@ export default function App() {
         const ACTIVITY_RE = /^(desarrollo|calidad|producci[oó]n|testing|qa|deploy|implementaci[oó]n|uat|certificaci[oó]n)/i;
         // Entregables and similar are always flat leaves — never parents of other rows
         const LEAF_RE = /^(entregable|deliverable|componente|m[oó]dulo)/i;
-        const INDICATOR_RE = /^(en curso|en riesgo|atrasado|finalizado|no iniciado|completado)/i;
+        const INDICATOR_RE = /^(en curso|en riesgo|atrasado|finalizado|no iniciado|completado|sin iniciar|pendiente de inicio)/i;
+
+        // Also scan all cells in a row for an indicator value (handles misaligned columns)
+        const findIndicatorInRow = (row) => {
+          for (let c = 0; c < Math.min(row.length, 6); c++) {
+            const v = row[c];
+            if (!v) continue;
+            const s = cellStr(v).replace(/[●•·\s]+/g, ' ').trim();
+            if (INDICATOR_RE.test(s)) return s;
+          }
+          return null;
+        };
 
         const schedule = [];
         let curProject = null;
@@ -1132,7 +1236,9 @@ export default function App() {
           const rawGestor = getCell(row, colGestor);
 
           const name = rawName ? cellStr(rawName) : null;
-          const indicador = rawIndicador ? cellStr(rawIndicador) : null;
+          // Clean indicator: strip bullet/circle chars that Excel colored badges may include
+          const rawIndicadorClean = rawIndicador ? cellStr(rawIndicador).replace(/[●•·]+/g, '').trim() : null;
+          const indicador = rawIndicadorClean || findIndicatorInRow(row);
 
           if (!name) continue;
 
@@ -1209,50 +1315,84 @@ export default function App() {
           }
         });
 
-        // ── Step 5: Ensure ganttCols cover the full date range of all rows ────
-        // Collect every fechaInicio and fechaFin across all projects, etapas, children
-        const allDates = [];
-        const collectDates = (row) => {
-          if (row.fechaInicio) allDates.push(row.fechaInicio);
-          if (row.fechaFin) allDates.push(row.fechaFin);
-        };
-        schedule.forEach(p => {
-          collectDates(p);
-          p.etapas.forEach(e => {
-            collectDates(e);
-            (e.actividades || e.children || []).forEach(a => collectDates(a));
+        // ── Step 5 (runs after Step 6 merge — see below) ─────────────────────
+
+        // ── Step 6: Merge Table 1 projects into schedule ─────────────────────
+        // Any project in Table 1 that is NOT already in the schedule gets added
+        // with its dates from Table 1 — gray Gantt bar will show if dates exist
+        const scheduleNames = new Set(
+          schedule.map(p => p.nombre.toLowerCase().trim())
+        );
+        for (const t1p of table1Projects) {
+          const key = t1p.nombre.toLowerCase().trim();
+          if (!scheduleNames.has(key)) {
+            schedule.push({
+              nombre:         t1p.nombre,
+              indicador:      t1p.indicador,
+              gerencia:       t1p.gerencia,
+              gestor:         t1p.gestor,
+              planPct:        null,
+              execPct:        null,
+              fechaInicio:    t1p.fechaInicio,
+              fechaFin:       t1p.fechaFin,
+              fechaInicioStr: t1p.fechaInicioStr,
+              fechaFinStr:    t1p.fechaFinStr,
+              etapas:         [],
+            });
+          } else {
+            // Backfill missing fields from Table 1
+            const existing = schedule.find(p => p.nombre.toLowerCase().trim() === key);
+            if (existing) {
+              if (!existing.indicador && t1p.indicador) existing.indicador = t1p.indicador;
+              if (!existing.gerencia  && t1p.gerencia)  existing.gerencia  = t1p.gerencia;
+              if (!existing.fechaInicio && t1p.fechaInicio) {
+                existing.fechaInicio    = t1p.fechaInicio;
+                existing.fechaInicioStr = t1p.fechaInicioStr;
+              }
+              if (!existing.fechaFin && t1p.fechaFin) {
+                existing.fechaFin    = t1p.fechaFin;
+                existing.fechaFinStr = t1p.fechaFinStr;
+              }
+            }
+          }
+        }
+
+        // ── Step 5: Ensure ganttCols cover the full date range of ALL rows ────
+        // Runs after Step 6 merge so Table 1 dates (e.g. No Iniciado) are included
+        {
+          const allDates = [];
+          const collectDates = (row) => {
+            if (row.fechaInicio) allDates.push(row.fechaInicio);
+            if (row.fechaFin)    allDates.push(row.fechaFin);
+          };
+          schedule.forEach(p => {
+            collectDates(p);
+            p.etapas.forEach(e => {
+              collectDates(e);
+              (e.actividades || e.children || []).forEach(a => collectDates(a));
+            });
           });
-        });
 
-        if (allDates.length > 0) {
-          const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-          const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
-          const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
+          if (allDates.length > 0) {
+            const MONTH_NAMES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+            const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+            const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
+            const rangeStart = new Date(Date.UTC(minDate.getUTCFullYear(), minDate.getUTCMonth(), 1));
+            const rangeEnd   = new Date(Date.UTC(maxDate.getUTCFullYear(), maxDate.getUTCMonth(), 1));
 
-          // Start from the earliest date (no buffer — exact coverage)
-          const rangeStart = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
-          const rangeEnd = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+            const firstCol = ganttCols.length > 0 ? new Date(Date.UTC(ganttCols[0].year, ganttCols[0].month, 1)) : null;
+            const lastCol  = ganttCols.length > 0 ? new Date(Date.UTC(ganttCols[ganttCols.length - 1].year, ganttCols[ganttCols.length - 1].month, 1)) : null;
+            const needsExpansion = ganttCols.length === 0 || firstCol > rangeStart || lastCol < rangeEnd;
 
-          // Check if existing ganttCols already cover the range
-          const firstCol = ganttCols.length > 0 ? new Date(ganttCols[0].year, ganttCols[0].month, 1) : null;
-          const lastCol = ganttCols.length > 0 ? new Date(ganttCols[ganttCols.length - 1].year, ganttCols[ganttCols.length - 1].month, 1) : null;
-
-          const needsExpansion = ganttCols.length === 0 || firstCol > rangeStart || lastCol < rangeEnd;
-
-          if (needsExpansion) {
-            // Rebuild from scratch covering the full range
-            ganttCols = [];
-            let cur = new Date(rangeStart);
-            let idx = 0;
-            while (cur <= rangeEnd) {
-              ganttCols.push({
-                colIdx: idx,
-                year: cur.getFullYear(),
-                month: cur.getMonth(),
-                label: MONTH_NAMES[cur.getMonth()],
-              });
-              cur.setMonth(cur.getMonth() + 1);
-              idx++;
+            if (needsExpansion) {
+              ganttCols = [];
+              let cur = new Date(rangeStart);
+              let idx = 0;
+              while (cur <= rangeEnd) {
+                ganttCols.push({ colIdx: idx, year: cur.getUTCFullYear(), month: cur.getUTCMonth(), label: MONTH_NAMES[cur.getUTCMonth()] });
+                cur.setUTCMonth(cur.getUTCMonth() + 1);
+                idx++;
+              }
             }
           }
         }
@@ -1443,7 +1583,7 @@ export default function App() {
 
       let matchChart = true;
       if (demandFilter) {
-        if (demandFilter.key === 'Gerencia Líder' && demandFilter.value === 'Otras') {
+        if (demandFilter.key === 'Gerencia Líder' && demandFilter.value === 'Otros') {
           matchChart = !cleanGerencia(item['Gerencia Líder']);
         } else if (demandFilter.key === 'Gerencia Líder') {
           matchChart = cleanGerencia(item['Gerencia Líder']) === demandFilter.value;
@@ -1919,7 +2059,12 @@ export default function App() {
           {/* New Relevant Data Row */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <InfoBox label="Cartera" value={project?.['Cartera']} />
-            <InfoBox label="Prioridad" value={project?.['Prioridad'] || 'Media'} />
+            <InfoBox label="Prioridad" value={(() => {
+              const isPrioritized = (data?.trend || []).some(t =>
+                String(t['Proyecto'] || '').toLowerCase().trim() === String(selectedProjectName || '').toLowerCase().trim()
+              );
+              return isPrioritized ? 'Alta' : 'Media';
+            })()} />
             <InfoBox
               label="Salud del Proyecto"
               value={
@@ -2240,7 +2385,7 @@ export default function App() {
                   data={(() => {
                     const mgmtData = {};
                     filteredDemand.forEach(d => {
-                      let mgmt = cleanGerencia(d['Gerencia Líder']) || 'Otras';
+                      let mgmt = cleanGerencia(d['Gerencia Líder']) || 'Otros';
                       if (mgmt.includes('Tecnologias de Informacion')) mgmt = 'TI';
                       if (!mgmtData[mgmt]) mgmtData[mgmt] = { name: mgmt, size: 0 };
                       mgmtData[mgmt].size++;
@@ -2371,7 +2516,7 @@ export default function App() {
                   data={(() => {
                     const counts = {};
                     filteredDemand.forEach(d => {
-                      const mgmt = cleanGerencia(d['Gerencia Líder']) || 'Otras';
+                      const mgmt = cleanGerencia(d['Gerencia Líder']) || 'Otros';
                       const type = String(d['Tipo'] || '').trim();
 
                       if (demandChartType === 'childProjects') {
@@ -2754,19 +2899,16 @@ export default function App() {
       const { fechaInicio, fechaFin, planPct, execPct } = row;
       if (!fechaInicio || !fechaFin) return null;
 
-      // Use the 1st of the month for start comparison, last day for end
-      const colStart = new Date(colYear, colMonth, 1);
-      const colEnd = new Date(colYear, colMonth + 1, 0); // last day of month
+      // Use UTC to match how dates are stored (avoids timezone day-shift)
+      const colStart = new Date(Date.UTC(colYear, colMonth, 1));
+      const colEnd   = new Date(Date.UTC(colYear, colMonth + 1, 0));
+      const start    = new Date(fechaInicio);
+      const end      = new Date(fechaFin);
 
-      const start = new Date(fechaInicio);
-      const end = new Date(fechaFin);
-
-      // No overlap
       if (colEnd < start || colStart > end) return null;
 
-      // Within range: compute what fraction of the total timeline this month's midpoint represents
-      const mid = new Date(colYear, colMonth, 15);
-      const totalMs = end.getTime() - start.getTime();
+      const mid      = new Date(Date.UTC(colYear, colMonth, 15));
+      const totalMs  = end.getTime() - start.getTime();
       const elapsedMs = mid.getTime() - start.getTime();
       const frac = totalMs > 0 ? Math.max(0, Math.min(1, elapsedMs / totalMs)) : 0;
 
@@ -2775,23 +2917,21 @@ export default function App() {
       const planF = plan !== null ? (plan <= 1.01 ? plan : plan / 100) : null;
       const execF = exec !== null ? (exec <= 1.01 ? exec : exec / 100) : null;
 
-      // Dark green: execution has covered up to this point
       if (execF !== null && frac <= execF) return '#15803d';
-      // Light green: plan has covered up to this point
       if (planF !== null && frac <= planF) return '#86efac';
-      // Gray: within range but not yet reached
       return '#d1d5db';
     };
 
     // ── KPIs ─────────────────────────────────────────────────────────────────
     const totalProjects = schedule.length;
-    const enCurso = schedule.filter(p => /en curso/i.test(p.indicador)).length;
-    const enRiesgo = schedule.filter(p => /en riesgo/i.test(p.indicador)).length;
-    const atrasado = schedule.filter(p => /atrasado/i.test(p.indicador)).length;
-    const finalizado = schedule.filter(p => /finalizado/i.test(p.indicador)).length;
+    const enCurso    = schedule.filter(p => indicadorInfo(p.indicador).label === 'EN CURSO').length;
+    const enRiesgo   = schedule.filter(p => indicadorInfo(p.indicador).label === 'EN RIESGO').length;
+    const atrasado   = schedule.filter(p => indicadorInfo(p.indicador).label === 'ATRASADO').length;
+    const finalizado = schedule.filter(p => indicadorInfo(p.indicador).label === 'FINALIZADO').length;
+    const noIniciado = schedule.filter(p => indicadorInfo(p.indicador).label === 'NO INICIADO').length;
 
-    const validPlan = schedule.filter(p => toNum(p.planPct) !== null);
-    const validExec = schedule.filter(p => toNum(p.execPct) !== null);
+    const validPlan = schedule.filter(p => indicadorInfo(p.indicador).label !== 'NO INICIADO' && toNum(p.planPct) !== null);
+    const validExec = schedule.filter(p => indicadorInfo(p.indicador).label !== 'NO INICIADO' && toNum(p.execPct) !== null);
     const avgPlan = validPlan.length
       ? validPlan.reduce((a, p) => { const n = toNum(p.planPct); return a + (n <= 1.01 ? n * 100 : n); }, 0) / validPlan.length
       : 0;
@@ -2799,8 +2939,10 @@ export default function App() {
       ? validExec.reduce((a, p) => { const n = toNum(p.execPct); return a + (n <= 1.01 ? n * 100 : n); }, 0) / validExec.length
       : 0;
 
-    // ── Chart data ────────────────────────────────────────────────────────────
-    const avanceData = schedule.map(p => {
+    // ── Chart data (excludes No Iniciado) ────────────────────────────────────
+    const scheduleForCharts = schedule.filter(p => indicadorInfo(p.indicador).label !== 'NO INICIADO');
+
+    const avanceData = scheduleForCharts.map(p => {
       const plan = toNum(p.planPct);
       const exec = toNum(p.execPct);
       return {
@@ -2814,7 +2956,7 @@ export default function App() {
 
     const gerMap = {};
     // The chart MUST be filtered so it reflects the click.
-    schedule.forEach(p => {
+    scheduleForCharts.forEach(p => {
       const g = p.gerencia || 'Sin Gerencia';
       if (!gerMap[g]) gerMap[g] = { plan: [], exec: [] };
       const plan = toNum(p.planPct); const exec = toNum(p.execPct);
@@ -2874,15 +3016,50 @@ export default function App() {
         </div>
 
         {/* ── KPIs ── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+        {/* ── Active filters chip bar ── */}
+        {(demand2GerenciaFilter || demand2IndicadorFilter || demand2GestorFilter) && (
+          <div className="flex flex-wrap items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+            <Filter className="w-4 h-4 text-blue-600 shrink-0" />
+
+            {demand2GerenciaFilter && (
+              <div className="flex items-center bg-white border border-blue-100 rounded-full px-2 py-0.5 text-[10px] font-bold text-blue-800 shadow-sm">
+                <span className="text-blue-400 mr-1 uppercase">Gerencia:</span>
+                <span className="uppercase">{demand2GerenciaFilter}</span>
+                <button onClick={() => setDemand2GerenciaFilter(null)} className="ml-1 hover:text-red-500"><X className="w-3 h-3" /></button>
+              </div>
+            )}
+
+            {demand2IndicadorFilter && (
+              <div className="flex items-center bg-white border border-blue-100 rounded-full px-2 py-0.5 text-[10px] font-bold text-blue-800 shadow-sm">
+                <span className="text-blue-400 mr-1 uppercase">Indicador:</span>
+                <span className="uppercase">{demand2IndicadorFilter}</span>
+                <button onClick={() => setDemand2IndicadorFilter(null)} className="ml-1 hover:text-red-500"><X className="w-3 h-3" /></button>
+              </div>
+            )}
+
+            {demand2GestorFilter && (
+              <div className="flex items-center bg-white border border-blue-100 rounded-full px-2 py-0.5 text-[10px] font-bold text-blue-800 shadow-sm">
+                <span className="text-blue-400 mr-1 uppercase">Gestor:</span>
+                <span className="uppercase">{demand2GestorFilter}</span>
+                <button onClick={() => setDemand2GestorFilter(null)} className="ml-1 hover:text-red-500"><X className="w-3 h-3" /></button>
+              </div>
+            )}
+
+            <button onClick={clearFilters} className="text-[10px] font-bold text-blue-600 hover:text-blue-800 underline ml-2">
+              Limpiar todo
+            </button>
+          </div>
+        )}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
           {[
             { label: 'Total Proyectos', value: totalProjects, color: '#1e3a5f', bg: '#f8fafc' },
-            { label: 'En Curso', value: enCurso, color: '#15803d', bg: '#f0fdf4' },
-            { label: 'En Riesgo', value: enRiesgo, color: '#c2410c', bg: '#fff7ed' },
-            { label: 'Atrasado', value: atrasado, color: '#dc2626', bg: '#fef2f2' },
-            { label: 'Finalizado', value: finalizado, color: '#1d4ed8', bg: '#eff6ff' },
-            { label: 'Plan Prom.', value: `${avgPlan.toFixed(0)}%`, color: '#1e3a5f', bg: '#f8fafc' },
-            { label: 'Real Prom.', value: `${avgExec.toFixed(0)}%`, color: '#15803d', bg: '#f0fdf4' },
+            { label: 'En Curso',        value: enCurso,       color: '#15803d', bg: '#f0fdf4' },
+            { label: 'En Riesgo',       value: enRiesgo,      color: '#c2410c', bg: '#fff7ed' },
+            { label: 'Atrasado',        value: atrasado,      color: '#dc2626', bg: '#fef2f2' },
+            { label: 'Finalizado',      value: finalizado,    color: '#1d4ed8', bg: '#eff6ff' },
+            { label: 'No Iniciado',     value: noIniciado,    color: '#6b7280', bg: '#f9fafb' },
+            { label: 'Plan Prom.',      value: `${avgPlan.toFixed(0)}%`, color: '#1e3a5f', bg: '#f8fafc' },
+            { label: 'Real Prom.',      value: `${avgExec.toFixed(0)}%`, color: '#15803d', bg: '#f0fdf4' },
           ].map((k, i) => (
             <div key={i} className="rounded-xl p-3 text-center shadow-sm border border-gray-200" style={{ backgroundColor: k.bg }}>
               <div className="text-2xl font-black" style={{ color: k.color }}>{k.value}</div>
@@ -3386,49 +3563,44 @@ export default function App() {
       <div className="space-y-6">
         {/* Top KPIs */}
         {(selectedProjectName || trendFilter || trendTypeFilter || Object.values(trendColumnFilters).some(v => v && v !== 'Todos')) && (
-          <div className="flex flex-wrap gap-2 items-center bg-corporate-dark/5 p-3 rounded-lg border border-corporate-dark/10">
-            <span className="text-[10px] font-bold text-corporate-dark uppercase tracking-widest mr-2">Filtros Activos:</span>
+          <div className="flex flex-wrap items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+            <Filter className="w-4 h-4 text-blue-600 shrink-0" />
             {selectedProjectName && (
-              <div className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
-                <span>Proyecto: {selectedProjectName}</span>
-                <button onClick={() => setSelectedProjectName(null)} className="hover:text-red-300"><X className="w-3 h-3" /></button>
+              <div className="flex items-center bg-white border border-blue-100 rounded-full px-2 py-0.5 text-[10px] font-bold text-blue-800 shadow-sm">
+                <span className="text-blue-400 mr-1 uppercase">Proyecto:</span>
+                <span className="uppercase">{selectedProjectName}</span>
+                <button onClick={() => setSelectedProjectName(null)} className="ml-1 hover:text-red-500"><X className="w-3 h-3" /></button>
               </div>
             )}
             {trendFilter && (
-              <div className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
-                <span>Mes: {trendFilter.month}</span>
-                <button onClick={() => setTrendFilter(null)} className="hover:text-red-300"><X className="w-3 h-3" /></button>
+              <div className="flex items-center bg-white border border-blue-100 rounded-full px-2 py-0.5 text-[10px] font-bold text-blue-800 shadow-sm">
+                <span className="text-blue-400 mr-1 uppercase">Mes:</span>
+                <span className="uppercase">{trendFilter.month}</span>
+                <button onClick={() => setTrendFilter(null)} className="ml-1 hover:text-red-500"><X className="w-3 h-3" /></button>
               </div>
             )}
             {trendTypeFilter && (
-              <div className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
-                <span>Tipo: {trendTypeFilter.type}</span>
-                <button onClick={() => setTrendTypeFilter(null)} className="hover:text-red-300"><X className="w-3 h-3" /></button>
+              <div className="flex items-center bg-white border border-blue-100 rounded-full px-2 py-0.5 text-[10px] font-bold text-blue-800 shadow-sm">
+                <span className="text-blue-400 mr-1 uppercase">Tipo:</span>
+                <span className="uppercase">{trendTypeFilter.type}</span>
+                <button onClick={() => setTrendTypeFilter(null)} className="ml-1 hover:text-red-500"><X className="w-3 h-3" /></button>
               </div>
             )}
             {Object.entries(trendColumnFilters).map(([key, value]) => {
               if (!value || value === 'Todos') return null;
               return (
-                <div key={key} className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
-                  <span>{key}: {value}</span>
-                  <button onClick={() => setTrendColumnFilters(prev => {
-                    const next = { ...prev };
-                    delete next[key];
-                    return next;
-                  })} className="hover:text-red-300"><X className="w-3 h-3" /></button>
+                <div key={key} className="flex items-center bg-white border border-blue-100 rounded-full px-2 py-0.5 text-[10px] font-bold text-blue-800 shadow-sm">
+                  <span className="text-blue-400 mr-1 uppercase">{key}:</span>
+                  <span className="uppercase">{value}</span>
+                  <button onClick={() => setTrendColumnFilters(prev => { const next = { ...prev }; delete next[key]; return next; })} className="ml-1 hover:text-red-500"><X className="w-3 h-3" /></button>
                 </div>
               );
             })}
             <button
-              onClick={() => {
-                setSelectedProjectName(null);
-                setTrendFilter(null);
-                setTrendTypeFilter(null);
-                setTrendColumnFilters({});
-              }}
-              className="text-[10px] font-bold text-red-600 hover:text-red-700 uppercase underline ml-auto"
+              onClick={() => { setSelectedProjectName(null); setTrendFilter(null); setTrendTypeFilter(null); setTrendColumnFilters({}); }}
+              className="text-[10px] font-bold text-blue-600 hover:text-blue-800 underline ml-2"
             >
-              Limpiar Todo
+              Limpiar todo
             </button>
           </div>
         )}
@@ -3758,35 +3930,30 @@ export default function App() {
   const renderWeeklyDashboard = () => {
     const hasActiveFilters = (weeklyChartFilter || Object.values(weeklyColumnFilters).some(v => v && v !== 'Todos'));
     const activeFiltersUI = hasActiveFilters ? (
-      <div className="flex flex-wrap gap-2 items-center bg-corporate-dark/5 p-3 rounded-lg border border-corporate-dark/10 mb-6">
-        <span className="text-[10px] font-bold text-corporate-dark uppercase tracking-widest mr-2">Filtros Activos:</span>
+      <div className="flex flex-wrap items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded shadow-sm animate-in fade-in slide-in-from-top-2 duration-300 mb-6">
+        <Filter className="w-4 h-4 text-blue-600 shrink-0" />
         {weeklyChartFilter && (
-          <div className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
-            <span>{weeklyChartFilter.key}: {weeklyChartFilter.value}</span>
-            <button onClick={() => setWeeklyChartFilter(null)} className="hover:text-red-300"><X className="w-3 h-3" /></button>
+          <div className="flex items-center bg-white border border-blue-100 rounded-full px-2 py-0.5 text-[10px] font-bold text-blue-800 shadow-sm">
+            <span className="text-blue-400 mr-1 uppercase">{weeklyChartFilter.key}:</span>
+            <span className="uppercase">{weeklyChartFilter.value}</span>
+            <button onClick={() => setWeeklyChartFilter(null)} className="ml-1 hover:text-red-500"><X className="w-3 h-3" /></button>
           </div>
         )}
         {Object.entries(weeklyColumnFilters).map(([key, value]) => {
           if (!value || value === 'Todos') return null;
           return (
-            <div key={key} className="flex items-center gap-2 bg-corporate-dark text-white px-3 py-1 rounded-full text-xs font-bold">
-              <span>{key}: {value}</span>
-              <button onClick={() => setWeeklyColumnFilters(prev => {
-                const next = { ...prev };
-                delete next[key];
-                return next;
-              })} className="hover:text-red-300"><X className="w-3 h-3" /></button>
+            <div key={key} className="flex items-center bg-white border border-blue-100 rounded-full px-2 py-0.5 text-[10px] font-bold text-blue-800 shadow-sm">
+              <span className="text-blue-400 mr-1 uppercase">{key}:</span>
+              <span className="uppercase">{value}</span>
+              <button onClick={() => setWeeklyColumnFilters(prev => { const next = { ...prev }; delete next[key]; return next; })} className="ml-1 hover:text-red-500"><X className="w-3 h-3" /></button>
             </div>
           );
         })}
         <button
-          onClick={() => {
-            setWeeklyChartFilter(null);
-            setWeeklyColumnFilters({});
-          }}
-          className="text-[10px] font-bold text-red-600 hover:text-red-700 uppercase underline ml-auto"
+          onClick={() => { setWeeklyChartFilter(null); setWeeklyColumnFilters({}); }}
+          className="text-[10px] font-bold text-blue-600 hover:text-blue-800 underline ml-2"
         >
-          Limpiar Todo
+          Limpiar todo
         </button>
       </div>
     ) : null;
@@ -4089,7 +4256,7 @@ export default function App() {
             <Briefcase className="w-12 h-12 text-corporate-dark" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Dashboard de Portafolio</h1>
-          <p className="text-gray-500 text-sm mb-6">Cargue el Portafolio de Demanda Estratégica Excel para iniciar la visualización.</p>
+          <p className="text-gray-500 text-sm mb-6">Cargue el Portafolio de Demanda Estratégica para iniciar la visualización.</p>
           <input
             type="file"
             accept=".xlsx, .xls"
