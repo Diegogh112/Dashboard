@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+﻿import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -618,6 +618,11 @@ export default function App() {
         }
 
         const val = item[key];
+        // For Gerencia Líder: clean numbers/dates → show as 'Otros' in filter options
+        if (key === 'Gerencia Líder') {
+          const g = cleanGerencia(val);
+          return g || 'Otros';
+        }
         const strVal = String(val || '').trim();
         if (strVal === '' || strVal === '-' || strVal === '0') {
           return 'Otros';
@@ -949,13 +954,15 @@ export default function App() {
         const bstr = evt.target.result;
         const wb = XLSX.read(bstr, { type: 'binary', cellDates: false });
 
-        // Find the sheet
+        // Find the sheet — guard against non-string sheet names
         let sheetName = wb.SheetNames.find(n =>
-          n.toLowerCase().includes('demanda estrat')
+          typeof n === 'string' && n.toLowerCase().includes('demanda estrat')
         );
         if (!sheetName) sheetName = wb.SheetNames[0];
 
         const sheet = wb.Sheets[sheetName];
+        if (!sheet) throw new Error(`No se pudo leer la hoja: ${sheetName}`);
+
         // Get raw rows as arrays
         const allRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
 
@@ -1072,7 +1079,7 @@ export default function App() {
         const h2 = h2raw.map(c => cellStr(c));
 
         const findCol = (...kws) => h2.findIndex(h =>
-          kws.some(k => h.toLowerCase().replace(/[\s\-_]/g, '').includes(k.toLowerCase().replace(/[\s\-_]/g, '')))
+          typeof h === 'string' && kws.some(k => h.toLowerCase().replace(/[\s\-_]/g, '').includes(k.toLowerCase().replace(/[\s\-_]/g, '')))
         );
 
         const colN = findCol('N°', 'Nro', 'Num');
@@ -1084,6 +1091,7 @@ export default function App() {
         // Exec column: "%" alone, or right after plan col
         const colExec = (() => {
           const idx = h2.findIndex((h, i) => {
+            if (typeof h !== 'string') return false;
             const s = h.toLowerCase().replace(/[\s\-_]/g, '');
             return i !== colPlan && (s === '%' || s.includes('ejecutado') || s.includes('completado') || s.includes('avanceejec') || s.includes('avancecomp'));
           });
@@ -1296,6 +1304,20 @@ export default function App() {
       .trim();
   };
 
+  // Returns a clean gerencia string, or '' if the value is a number, date serial, or garbage
+  const cleanGerencia = (val) => {
+    if (val === null || val === undefined) return '';
+    // Numbers (including Excel date serials) → empty
+    if (typeof val === 'number') return '';
+    const s = cleanString(String(val));
+    // Looks like a date (DD/MM/YYYY, YYYY-MM-DD, etc.) → empty
+    if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}$/.test(s)) return '';
+    if (/^\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}$/.test(s)) return '';
+    // Pure number string → empty
+    if (/^\d+$/.test(s)) return '';
+    return s;
+  };
+
   const parseDateString = (v) => {
     if (!v) return null;
     if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
@@ -1372,8 +1394,8 @@ export default function App() {
       let matchChart = true;
       if (portfolioFilter) {
         if (portfolioFilter.key === 'Gerencia Líder' && portfolioFilter.value === 'Otros') {
-          // "Otros" means blank/null Gerencia Líder
-          matchChart = !item['Gerencia Líder'] || String(item['Gerencia Líder']).trim() === '';
+          // "Otros" means blank, null, number, or date in Gerencia Líder
+          matchChart = !cleanGerencia(item['Gerencia Líder']);
         } else {
           matchChart = String(item[portfolioFilter.key] || '').includes(portfolioFilter.value);
         }
@@ -1394,6 +1416,11 @@ export default function App() {
         }
         if (key === 'Nombre del Proyecto') {
           return String(item['Nombre del Proyecto'] || '').toLowerCase().includes(String(value).toLowerCase());
+        }
+        if (key === 'Gerencia Líder') {
+          const g = cleanGerencia(item['Gerencia Líder']);
+          if (value === 'Otros') return !g;
+          return g === value;
         }
         return String(item[key] || '') === String(value);
       });
@@ -1416,7 +1443,13 @@ export default function App() {
 
       let matchChart = true;
       if (demandFilter) {
-        matchChart = String(item[demandFilter.key] || '').includes(demandFilter.value);
+        if (demandFilter.key === 'Gerencia Líder' && demandFilter.value === 'Otras') {
+          matchChart = !cleanGerencia(item['Gerencia Líder']);
+        } else if (demandFilter.key === 'Gerencia Líder') {
+          matchChart = cleanGerencia(item['Gerencia Líder']) === demandFilter.value;
+        } else {
+          matchChart = String(item[demandFilter.key] || '').includes(demandFilter.value);
+        }
       }
 
       // Table Search & Column Filters
@@ -1436,6 +1469,11 @@ export default function App() {
         if (key === 'Nombre del Proyecto') {
           const val = item['Nombre del Proyecto'] || item['PROYECTO'] || '';
           return String(val) === String(value);
+        }
+        if (key === 'Gerencia Líder') {
+          const g = cleanGerencia(item['Gerencia Líder']);
+          if (value === 'Otros') return !g;
+          return g === value;
         }
         return String(item[key] || '') === String(value);
       });
@@ -2202,7 +2240,7 @@ export default function App() {
                   data={(() => {
                     const mgmtData = {};
                     filteredDemand.forEach(d => {
-                      let mgmt = d['Gerencia Líder'] || 'Otras';
+                      let mgmt = cleanGerencia(d['Gerencia Líder']) || 'Otras';
                       if (mgmt.includes('Tecnologias de Informacion')) mgmt = 'TI';
                       if (!mgmtData[mgmt]) mgmtData[mgmt] = { name: mgmt, size: 0 };
                       mgmtData[mgmt].size++;
@@ -2333,7 +2371,7 @@ export default function App() {
                   data={(() => {
                     const counts = {};
                     filteredDemand.forEach(d => {
-                      const mgmt = d['Gerencia Líder'] || 'Otras';
+                      const mgmt = cleanGerencia(d['Gerencia Líder']) || 'Otras';
                       const type = String(d['Tipo'] || '').trim();
 
                       if (demandChartType === 'childProjects') {
@@ -2612,7 +2650,7 @@ export default function App() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-gray-600 truncate">{d['Gerencia Líder']}</td>
+                        <td className="px-4 py-3 text-gray-600 truncate">{cleanGerencia(d['Gerencia Líder'])}</td>
                         <td className="px-4 py-3">
                           <div className="max-w-fit">
                             <span className={cn(
@@ -2968,7 +3006,7 @@ export default function App() {
     const managementData = (() => {
       const counts = {};
       filteredPortfolio.forEach(p => {
-        const g = (p['Gerencia Líder'] || '').trim();
+        const g = cleanGerencia(p['Gerencia Líder']);
         const key = g || 'Otros';
         counts[key] = (counts[key] || 0) + 1;
       });
@@ -3309,7 +3347,7 @@ export default function App() {
                                 </div>
                               </div>
                             </td>
-                            <td className="px-4 py-3 text-gray-600 truncate">{p['Gerencia Líder']}</td>
+                            <td className="px-4 py-3 text-gray-600 truncate">{cleanGerencia(p['Gerencia Líder'])}</td>
                             <td className="px-4 py-3">
                               <div className="max-w-fit">
                                 <span className={cn(
