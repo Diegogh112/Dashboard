@@ -9,7 +9,7 @@ import {
   TrendingUp, Calendar, Filter, Download, AlertCircle,
   CheckCircle2, Clock, PlayCircle, StopCircle, ChevronRight, ChevronDown,
   Menu, X, Search, LayoutDashboard, Briefcase, Users, Activity, ArrowLeft, Star, MessageSquare,
-  Layers, ListChecks, FolderOpen, Table as TableIcon
+  Layers, ListChecks, FolderOpen, Table as TableIcon, Maximize2, Minimize2
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -236,7 +236,7 @@ const KPICard = ({ label, value, colorClass }) => (
 const COLORS = ['#1e3a5f', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
 // ── GanttTable: collapsible Gantt with project → etapa → actividad hierarchy ──
-function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor, pctStr, indicadorInfo }) {
+function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor, pctStr, indicadorInfo, isFullscreen, onToggleFullscreen }) {
   const [expanded, setExpanded] = React.useState(() => {
     const s = new Set();
     schedule.forEach((_, i) => s.add(i));
@@ -350,9 +350,10 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
         {hasGantt && (
           <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, width: allGanttCols.length * COL_W, backgroundColor: 'transparent', borderBottom: `1px solid ${borderColor}`, height: rowHeight }}>
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', pointerEvents: 'none' }}>
-              {allGanttCols.map((_, i) => (
-                <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: '1px dashed #e2e8f0' }} />
-              ))}
+              {allGanttCols.map((col, i) => {
+                const isLastOfYear = i === allGanttCols.length - 1 || allGanttCols[i + 1].year !== col.year;
+                return <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: isLastOfYear ? '2px solid #475569' : '1px dashed #e2e8f0' }} />;
+              })}
             </div>
             {bar}
           </td>
@@ -363,9 +364,43 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
 
   return (
     <div
-      style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '72vh', position: 'relative' }}
+      style={isFullscreen ? {
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        zIndex: 9000, backgroundColor: 'white',
+        display: 'flex', flexDirection: 'column',
+      } : { position: 'relative' }}
       onClick={() => setTooltip(null)}
     >
+      {/* Fullscreen header bar */}
+      {isFullscreen && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '1px solid #e5e7eb', backgroundColor: '#f8fafc', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Calendar style={{ width: 16, height: 16, color: '#1e3a5f' }} />
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              CRONOGRAMA DE PROYECTOS Y ETAPAS
+            </span>
+            <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>
+              {schedule.length} proyectos &middot; {schedule.reduce((a, p) => a + p.etapas.length, 0)} etapas
+            </span>
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleFullscreen(); }}
+            style={{ padding: '6px', borderRadius: 6, border: '1px solid #e5e7eb', backgroundColor: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Salir de pantalla completa"
+          >
+            <Minimize2 style={{ width: 16, height: 16, color: '#374151' }} />
+          </button>
+        </div>
+      )}
+
+      {/* Scrollable table area */}
+      <div
+        style={{
+          overflowX: 'auto', overflowY: 'auto',
+          maxHeight: isFullscreen ? 'calc(100vh - 52px)' : '40vh',
+          flex: isFullscreen ? 1 : undefined,
+        }}
+      >
       {/* Tooltip */}
       {tooltip && (
         <div
@@ -416,7 +451,7 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
             <th style={{ ...thBase(INI_W), backgroundColor: '#2d4f7a', height: MONTH_H }} />
             <th style={{ ...thBase(FIN_W), backgroundColor: '#2d4f7a', height: MONTH_H }} />
             {allGanttCols.map((col, i) => (
-              <th key={i} style={{ ...thBase(COL_W), fontSize: '8px', padding: '3px 2px', borderRight: '1px solid #475569', height: MONTH_H }}>
+              <th key={i} style={{ ...thBase(COL_W), fontSize: '8px', padding: '3px 2px', borderRight: i === allGanttCols.length - 1 || allGanttCols[i + 1]?.year !== col.year ? '2px solid #1e3a5f' : '1px solid #475569', height: MONTH_H }}>
                 {MONTH_ABBR[col.month] || col.label}
               </th>
             ))}
@@ -427,6 +462,7 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
             const isExpanded = expanded.has(pi);
             const hasChildren = project.etapas.length > 0;
             const rowBg = '#f8fafc';
+            const PROJECT_BORDER = '3px solid #64748b'; // thick line between projects
 
             return (
               <React.Fragment key={pi}>
@@ -435,30 +471,33 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
                   onClick={() => hasChildren && toggleProject(pi)}
                 >
                   {/* Name with expand arrow */}
-                  <td style={{ ...tdBase(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1', fontWeight: 700, color: '#1e3a5f', height: 40 }}>
+                  <td style={{ ...tdBase(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: rowBg, borderBottom: PROJECT_BORDER, fontWeight: 700, color: '#1e3a5f', height: 40 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
                       {hasChildren && <span style={{ fontSize: 10, color: '#64748b', flexShrink: 0, width: 12 }}>{isExpanded ? '▼' : '▶'}</span>}
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }} title={project.nombre}>{project.nombre}</span>
                     </div>
                   </td>
-                  <td style={{ ...tdBase(IND_W), position: 'sticky', left: IND_LEFT, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1', textAlign: 'center' }}>
+                  <td style={{ ...tdBase(IND_W), position: 'sticky', left: IND_LEFT, zIndex: 10, backgroundColor: rowBg, borderBottom: PROJECT_BORDER, textAlign: 'center' }}>
                     {project.indicador ? (
                       <span className={`px-1.5 py-0.5 rounded border font-bold ${indicadorInfo(project.indicador).badge}`} style={{ fontSize: 8, whiteSpace: 'nowrap' }}>
                         {indicadorInfo(project.indicador).label}
                       </span>
                     ) : null}
                   </td>
-                  <td style={{ ...tdBase(GER_W), position: 'sticky', left: GER_LEFT, zIndex: 10, backgroundColor: rowBg, borderBottom: '1px solid #cbd5e1', color: '#4b5563', fontSize: 9 }} title={project.gerencia || ''}>{project.gerencia || ''}</td>
-                  <td style={{ ...tdBase(PCT_W), textAlign: 'center', borderBottom: '1px solid #cbd5e1', height: 40 }}>
+                  <td style={{ ...tdBase(GER_W), position: 'sticky', left: GER_LEFT, zIndex: 10, backgroundColor: rowBg, borderBottom: PROJECT_BORDER, color: '#4b5563', fontSize: 9 }} title={project.gerencia || ''}>{project.gerencia || ''}</td>
+                  <td style={{ ...tdBase(PCT_W), textAlign: 'center', borderBottom: PROJECT_BORDER, height: 40 }}>
                     <div style={{ fontWeight: 700, color: '#1e3a5f', fontSize: 10 }}>{pctStr(project.planPct)}</div>
                     <div style={{ fontWeight: 700, color: '#15803d', fontSize: 10 }}>{pctStr(project.execPct)}</div>
                   </td>
-                  <td style={{ ...tdBase(INI_W), textAlign: 'center', color: '#6b7280', fontSize: 9, borderBottom: '1px solid #cbd5e1', height: 40 }}>{project.fechaInicioStr || '-'}</td>
-                  <td style={{ ...tdBase(FIN_W), textAlign: 'center', color: '#6b7280', fontSize: 9, borderBottom: '1px solid #cbd5e1', height: 40 }}>{project.fechaFinStr || '-'}</td>
+                  <td style={{ ...tdBase(INI_W), textAlign: 'center', color: '#6b7280', fontSize: 9, borderBottom: PROJECT_BORDER, height: 40 }}>{project.fechaInicioStr || '-'}</td>
+                  <td style={{ ...tdBase(FIN_W), textAlign: 'center', color: '#6b7280', fontSize: 9, borderBottom: PROJECT_BORDER, height: 40 }}>{project.fechaFinStr || '-'}</td>
                   {hasGantt && (
-                    <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, width: allGanttCols.length * COL_W, borderBottom: '1px solid #cbd5e1', height: 40 }}>
+                    <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, width: allGanttCols.length * COL_W, borderBottom: PROJECT_BORDER, height: 40 }}>
                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', pointerEvents: 'none' }}>
-                        {allGanttCols.map((_, i) => <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: '1px dashed #e2e8f0' }} />)}
+                        {allGanttCols.map((col, i) => {
+                          const isLastOfYear = i === allGanttCols.length - 1 || allGanttCols[i + 1].year !== col.year;
+                          return <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: isLastOfYear ? '2px solid #475569' : '1px dashed #e2e8f0' }} />;
+                        })}
                       </div>
                       {renderBar(project)}
                     </td>
@@ -492,7 +531,10 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
                           <td style={{ ...tdBase(FIN_W), textAlign: 'center', color: '#9ca3af', fontSize: 9, borderBottom: '1px solid #e2e8f0', height: 36 }}>{etapa.fechaFinStr || '-'}</td>
                             <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, borderBottom: '1px solid #e2e8f0', height: 36 }}>
                               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', pointerEvents: 'none' }}>
-                                {allGanttCols.map((_, i) => <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: '1px dashed #e2e8f0' }} />)}
+                                {allGanttCols.map((col, i) => {
+                                  const isLastOfYear = i === allGanttCols.length - 1 || allGanttCols[i + 1].year !== col.year;
+                                  return <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: isLastOfYear ? '2px solid #475569' : '1px dashed #e2e8f0' }} />;
+                                })}
                               </div>
                               {renderBar(etapa)}
                             </td>
@@ -519,7 +561,10 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
                           {hasGantt && (
                             <td colSpan={allGanttCols.length} style={{ position: 'relative', padding: 0, minWidth: allGanttCols.length * COL_W, borderBottom: '1px solid #f1f5f9', height: 32 }}>
                               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', pointerEvents: 'none' }}>
-                                {allGanttCols.map((_, i) => <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: '1px dashed #e2e8f0' }} />)}
+                                {allGanttCols.map((col, i) => {
+                                  const isLastOfYear = i === allGanttCols.length - 1 || allGanttCols[i + 1].year !== col.year;
+                                  return <div key={i} style={{ width: COL_W, minWidth: COL_W, borderRight: isLastOfYear ? '2px solid #475569' : '1px dashed #e2e8f0' }} />;
+                                })}
                               </div>
                               {renderBar(act)}
                             </td>
@@ -534,6 +579,7 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -572,6 +618,8 @@ export default function App() {
   const [demand2GerenciaFilter, setDemand2GerenciaFilter] = useState(null);
   const [demand2IndicadorFilter, setDemand2IndicadorFilter] = useState(null);
   const [demand2GestorFilter, setDemand2GestorFilter] = useState(null);
+  const [ganttFullscreen, setGanttFullscreen] = useState(false);
+  const [soloProyectos, setSoloProyectos] = useState(false);
 
   const getUniqueValues = (key, isPortfolio = false, isTrend = false, isWeekly = false) => {
     let source = [];
@@ -1618,9 +1666,15 @@ export default function App() {
         return String(item[key] || '') === String(value);
       });
 
+      // Solo Proyectos filter: only include rows where Tipo de Requerimiento === 'Proyecto'
+      if (soloProyectos) {
+        const tipo = String(item['Tipo'] || item['Tipo de Requerimiento'] || '').trim().toLowerCase();
+        if (tipo !== 'proyecto') return false;
+      }
+
       return matchStatus && matchPortfolio && matchChart && matchSearch && matchColumnFilters;
     });
-  }, [data, sidebarFilters.status, topPortfolio, demandFilter, tableSearch, tableColumnFilters]);
+  }, [data, sidebarFilters.status, topPortfolio, demandFilter, tableSearch, tableColumnFilters, soloProyectos]);
 
   const stats = useMemo(() => {
     const total = filteredPortfolio.length;
@@ -3164,12 +3218,21 @@ export default function App() {
               <Calendar className="w-4 h-4" style={{ color: '#1e3a5f' }} />
               CRONOGRAMA DE PROYECTOS Y ETAPAS
             </h3>
-            <div className="text-[9px] text-gray-400 font-bold">
-              {schedule.length} proyectos &middot; {schedule.reduce((a, p) => a + p.etapas.length, 0)} etapas
+            <div className="flex items-center gap-3">
+              <span className="text-[9px] text-gray-400 font-bold">
+                {schedule.length} proyectos &middot; {schedule.reduce((a, p) => a + p.etapas.length, 0)} etapas
+              </span>
+              <button
+                onClick={() => setGanttFullscreen(true)}
+                className="p-1.5 rounded border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                title="Ver en pantalla completa"
+              >
+                <Maximize2 className="w-4 h-4 text-gray-500" />
+              </button>
             </div>
           </div>
 
-          <GanttTable schedule={schedule} allGanttCols={allGanttCols} yearGroups={yearGroups} MONTH_ABBR={MONTH_ABBR} ganttColor={ganttColor} pctStr={pctStr} indicadorInfo={indicadorInfo} />
+          <GanttTable schedule={schedule} allGanttCols={allGanttCols} yearGroups={yearGroups} MONTH_ABBR={MONTH_ABBR} ganttColor={ganttColor} pctStr={pctStr} indicadorInfo={indicadorInfo} isFullscreen={ganttFullscreen} onToggleFullscreen={() => setGanttFullscreen(f => !f)} />
         </div>
       </div>
     );
@@ -4460,6 +4523,29 @@ export default function App() {
                   ))}
                 </select>
               </div>
+
+              {activeTab === 'demand' && (
+                <>
+                  <div className="h-6 w-px bg-gray-200" />
+                  <label className="flex items-center gap-2 cursor-pointer select-none group">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={soloProyectos}
+                        onChange={(e) => setSoloProyectos(e.target.checked)}
+                        className="sr-only"
+                      />
+                      <div className={cn(
+                        "w-4 h-4 rounded border-2 flex items-center justify-center transition-colors",
+                        soloProyectos ? "bg-[#1e3a5f] border-[#1e3a5f]" : "bg-white border-gray-300 group-hover:border-gray-400"
+                      )}>
+                        {soloProyectos && <CheckCircle2 className="w-3 h-3 text-white" />}
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Solo Proyectos</span>
+                  </label>
+                </>
+              )}
             </>
           )}
         </div>
