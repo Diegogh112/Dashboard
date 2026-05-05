@@ -2742,7 +2742,6 @@ export default function App() {
                   onChange={(e) => setTableSearch(e.target.value)}
                 />
               </div>
-// jsjs
               <select
                 className="text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                 value={tableColumnFilters['Priorizado'] || 'Todos'}
