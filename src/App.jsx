@@ -1,4 +1,5 @@
-﻿import React, { useState, useCallback, useMemo, useEffect } from 'react';
+﻿// Importaciones
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -14,12 +15,13 @@ import {
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-// --- Utility Functions ---
-
+// Funciones utilitarias
+// cn: combina clases de Tailwind
 function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
+// formatPercent: formatea un valor como porcentaje
 const formatPercent = (val, decimals = 0) => {
   if (val === undefined || val === null || val === '') return '-';
   if (typeof val === 'string' && val.toLowerCase().includes('no aplica')) return '-';
@@ -28,6 +30,7 @@ const formatPercent = (val, decimals = 0) => {
   return `${(num * 100).toFixed(decimals)}%`;
 };
 
+// formatCurrency: formatea un valor como moneda CLP
 const formatCurrency = (val) => {
   if (val === undefined || val === null) return '$0';
   const num = typeof val === 'number' ? val : parseFloat(val);
@@ -38,6 +41,7 @@ const formatCurrency = (val) => {
   }).format(num);
 };
 
+// excelDateToJSDate: convierte serial de fecha Excel a cadena legible
 const excelDateToJSDate = (serial) => {
   if (!serial) return '-';
   if (typeof serial === 'string') return serial;
@@ -49,6 +53,7 @@ const excelDateToJSDate = (serial) => {
   });
 };
 
+// formatSeguimiento: formatea texto de seguimiento con fechas resaltadas
 const formatSeguimiento = (text) => {
   if (!text) return 'Sin comentarios de seguimiento registrados.';
   const datePattern = /(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/g;
@@ -71,6 +76,7 @@ const formatSeguimiento = (text) => {
   return formatted;
 };
 
+// getDeviationColor: retorna clase de color según desviación
 const getDeviationColor = (dev) => {
   const d = typeof dev === 'number' ? dev : parseFloat(dev);
   if (isNaN(d)) return 'text-gray-500';
@@ -79,6 +85,7 @@ const getDeviationColor = (dev) => {
   return 'text-green-600 bg-green-50'; // >= 0%
 };
 
+// getHealthColor: retorna clase de color según salud del proyecto
 const getHealthColor = (project) => {
   const alert = (project?.['ALERTA'] || project?.['Alerta'] || '').toString().toLowerCase();
   if (alert.includes('rojo')) return 'bg-red-500';
@@ -92,6 +99,7 @@ const getHealthColor = (project) => {
   return 'bg-green-500';
 };
 
+// calculateDemandStats: calcula estadísticas de la demanda estratégica
 const calculateDemandStats = (demandData) => {
   const projectsOnly = demandData.filter(d => (d['Tipo'] || d['Tipo de Requerimiento'] || '').toLowerCase() === 'proyecto');
 
@@ -119,6 +127,7 @@ const calculateDemandStats = (demandData) => {
   return stats;
 };
 
+// calculatePortfolioStats: calcula estadísticas del portafolio P&D
 const calculatePortfolioStats = (portfolioData) => {
   const getValidAvg = (data, key) => {
     const validItems = data.filter(d => {
@@ -151,6 +160,7 @@ const calculatePortfolioStats = (portfolioData) => {
   return stats;
 };
 
+// getDemandProjectHealth: determina la salud de un proyecto de demanda
 const getDemandProjectHealth = (project) => {
   if (!project) return { label: "Excelente", color: "text-green-600", bg: "bg-green-500", emoji: "🟢" };
 
@@ -192,8 +202,8 @@ const getDemandProjectHealth = (project) => {
   return { label, color, bg, emoji };
 };
 
-// --- Components ---
-
+// Componentes reutilizables
+// InfoBox: caja de información con etiqueta y valor
 const InfoBox = ({ label, value, className }) => (
   <div className={cn("bg-white border border-gray-200 rounded overflow-hidden flex flex-col", className)}>
     <div className="bg-[#1e3a5f] text-white text-[10px] uppercase px-2 py-1 font-bold tracking-wider">
@@ -205,6 +215,7 @@ const InfoBox = ({ label, value, className }) => (
   </div>
 );
 
+// TimelineProgressBar: barra de progreso con fechas de inicio y fin
 const TimelineProgressBar = ({ label, percent, color, startDate, endDate, showDates = false }) => (
   <div className="space-y-1">
     <div className="flex justify-between items-end">
@@ -226,6 +237,7 @@ const TimelineProgressBar = ({ label, percent, color, startDate, endDate, showDa
   </div>
 );
 
+// KPICard: tarjeta de indicador clave de rendimiento
 const KPICard = ({ label, value, colorClass }) => (
   <div className="bg-white border border-gray-200 rounded p-3 flex flex-col items-center justify-center text-center shadow-sm">
     <div className={cn("text-2xl font-bold text-gray-800", colorClass)}>{value}</div>
@@ -235,8 +247,9 @@ const KPICard = ({ label, value, colorClass }) => (
 
 const COLORS = ['#1e3a5f', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
-// ── GanttTable: collapsible Gantt with project → etapa → actividad hierarchy ──
+// Componente Gantt: cronograma interactivo con expand/collapse
 function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor, pctStr, indicadorInfo, isFullscreen, onToggleFullscreen }) {
+  // Estados: expansión de proyectos y etapas
   const [expanded, setExpanded] = React.useState(() => {
     const s = new Set();
     schedule.forEach((_, i) => s.add(i));
@@ -272,7 +285,7 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
   const hasGantt = allGanttCols.length > 0;
   const totalTableW = FIXED_W + PCT_W + INI_W + FIN_W + allGanttCols.length * COL_W;
 
-  // Gantt bar rendering using ganttColor per-cell approach (continuous bar)
+  // renderBar: dibuja la barra Gantt para una fila
   const renderBar = (row) => {
     if (!row.fechaInicio || !row.fechaFin || !hasGantt) return null;
     const start = new Date(row.fechaInicio);
@@ -313,6 +326,7 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
     );
   };
 
+  // thBase / tdBase: estilos base para celdas de encabezado y datos
   const thBase = (w, extra = {}) => ({
     minWidth: w, width: w, padding: '5px 6px', textAlign: 'center',
     borderRight: '1px solid #2d4f7a', fontSize: '10px', fontWeight: 700,
@@ -362,6 +376,7 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
     );
   };
 
+  // Retorno JSX: tabla Gantt con encabezados y filas
   return (
     <div
       style={isFullscreen ? {
@@ -424,7 +439,7 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
 
       <table style={{ borderCollapse: 'collapse', minWidth: totalTableW, tableLayout: 'fixed' }}>
         <thead>
-          {/* Year row */}
+          {/* Fila de encabezado: años */}
           {Object.keys(yearGroups).length > 0 && (
             <tr style={{ backgroundColor: '#1e3a5f', color: 'white', position: 'sticky', top: 0, zIndex: 25 }}>
               <th style={{ ...thBase(NAME_W), textAlign: 'left', position: 'sticky', left: 0, zIndex: 35, backgroundColor: '#1e3a5f', height: YEAR_H }}>
@@ -442,7 +457,7 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
               ))}
             </tr>
           )}
-          {/* Month row */}
+          {/* Fila de encabezado: meses */}
           <tr style={{ backgroundColor: '#2d4f7a', color: 'white', position: 'sticky', top: Object.keys(yearGroups).length > 0 ? YEAR_H : 0, zIndex: 25 }}>
             <th style={{ ...thBase(NAME_W), textAlign: 'left', position: 'sticky', left: 0, zIndex: 35, backgroundColor: '#2d4f7a', height: MONTH_H }} />
             <th style={{ ...thBase(IND_W), position: 'sticky', left: IND_LEFT, zIndex: 35, backgroundColor: '#2d4f7a', height: MONTH_H }} />
@@ -458,6 +473,7 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
           </tr>
         </thead>
         <tbody>
+          {/* Filas de proyectos */}
           {schedule.map((project, pi) => {
             const isExpanded = expanded.has(pi);
             const hasChildren = project.etapas.length > 0;
@@ -505,6 +521,7 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
                 </tr>
 
                 {isExpanded && project.etapas.map((etapa, ei) => {
+                  // Filas de etapas
                   const etapaKey = `${pi}-${ei}`;
                   const etapaExpanded = expandedEtapas.has(etapaKey);
                   const hasActs = etapa.actividades && etapa.actividades.length > 0;
@@ -538,11 +555,12 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
                               </div>
                               {renderBar(etapa)}
                             </td>
-                          )}
+                          )
                         </tr>
                       )}
 
                       {(etapaExpanded || !showEtapaRow) && hasActs && etapa.actividades.map((act, ai) => (
+                        // Filas de actividades
                         <tr key={`${etapaKey}-${ai}`} style={{ height: 32, backgroundColor: '#ffffff' }}>
                           <td style={{ ...tdBase(NAME_W), position: 'sticky', left: 0, zIndex: 10, backgroundColor: '#ffffff', borderBottom: '1px solid #f1f5f9', paddingLeft: showEtapaRow ? 40 : 26, color: '#6b7280', fontSize: 9, height: 32 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -585,9 +603,9 @@ function GanttTable({ schedule, allGanttCols, yearGroups, MONTH_ABBR, ganttColor
 }
 
 
-// --- Main App ---
-
+// Aplicación principal
 export default function App() {
+  // Estados de la aplicación
   const [data, setData] = useState(null);
   const [demand2Data, setDemand2Data] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -621,6 +639,7 @@ export default function App() {
   const [ganttFullscreen, setGanttFullscreen] = useState(false);
   const [soloProyectos, setSoloProyectos] = useState(false);
 
+  // Obtiene valores únicos para los filtros desplegables
   const getUniqueValues = (key, isPortfolio = false, isTrend = false, isWeekly = false) => {
     let source = [];
     if (isPortfolio) {
@@ -783,6 +802,7 @@ export default function App() {
     return Array.from(new Set(values)).sort();
   };
 
+  // Maneja el clic en botones de filtro de columna
   const handleFilterClick = (key, e, isPortfolio = false, isTrend = false, isWeekly = false) => {
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
@@ -801,6 +821,7 @@ export default function App() {
     return () => window.removeEventListener('click', handleClickOutside);
   }, [activeFilterMenu]);
 
+  // Definición de pestañas de navegación
   const TABS = [
     { id: 'demand', label: 'Demanda Estratégica TI', icon: Activity },
     { id: 'portfolio', label: 'Portafolio P&D', icon: Briefcase },
@@ -814,6 +835,7 @@ export default function App() {
   const [trendSearch, setTrendSearch] = useState('');
   const [trendColumnFilters, setTrendColumnFilters] = useState({});
 
+  // Carga y parsea el archivo Excel principal
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1021,6 +1043,7 @@ export default function App() {
     reader.readAsBinaryString(file);
   };
 
+  // Carga y parsea el archivo xlsm de Demanda Estratégica
   const handleDemand2Upload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1456,6 +1479,7 @@ export default function App() {
     };
     reader.readAsBinaryString(file);
   };
+  // normalizeForGrouping: normaliza texto para comparaciones de filtros
   const normalizeForGrouping = (str) => {
     if (!str) return '';
     return String(str)
@@ -1471,6 +1495,7 @@ export default function App() {
 
   const ESTADO_CATEGORIES = ['En Proceso', 'Pendiente', 'Finalizado', 'Por Definir', 'Observado', 'Otros'];
 
+  // normalizeEstado: agrupa valores de estado en categorías predefinidas
   const normalizeEstado = (raw) => {
     if (!raw) return 'Sin estado';
     const s = String(raw).trim().toLowerCase();
@@ -1485,6 +1510,7 @@ export default function App() {
     return cut.length <= 25 ? (cut.charAt(0).toUpperCase() + cut.slice(1)) : 'Otros';
   };
 
+  // cleanString: limpia espacios y caracteres especiales de un texto
   const cleanString = (str) => {
     return String(str || '')
       .replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, '')
@@ -1492,7 +1518,7 @@ export default function App() {
       .trim();
   };
 
-  // Returns a clean gerencia string, or '' if the value is a number, date serial, or garbage
+  // cleanGerencia: limpia valores no textuales de Gerencia Líder (números, fechas)
   const cleanGerencia = (val) => {
     if (val === null || val === undefined) return '';
     // Numbers (including Excel date serials) → empty
@@ -1506,6 +1532,7 @@ export default function App() {
     return s;
   };
 
+  // parseDateString: convierte texto o serial a objeto Date
   const parseDateString = (v) => {
     if (!v) return null;
     if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
@@ -1566,7 +1593,7 @@ export default function App() {
     return [...new Set(source.map(i => i[field]))].filter(Boolean).sort();
   };
 
-  // Filtered Data based on sidebar
+  // Datos filtrados: Portafolio P&D
   const filteredPortfolio = useMemo(() => {
     if (!data?.portfolio) return [];
 
@@ -1617,6 +1644,7 @@ export default function App() {
     });
   }, [data, sidebarFilters, topPortfolio, portfolioColumnFilters, portfolioFilter, portfolioSearch]);
 
+  // Datos filtrados: Demanda Estratégica TI
   const filteredDemand = useMemo(() => {
     if (!data?.demand) return [];
 
@@ -1676,6 +1704,7 @@ export default function App() {
     });
   }, [data, sidebarFilters.status, topPortfolio, demandFilter, tableSearch, tableColumnFilters, soloProyectos]);
 
+  // Estadísticas del portafolio
   const stats = useMemo(() => {
     const total = filteredPortfolio.length;
     const inProgress = filteredPortfolio.filter(p => {
@@ -1705,6 +1734,7 @@ export default function App() {
     };
   }, [filteredPortfolio, filteredDemand]);
 
+  // Datos agrupados por gerencia para el gráfico del portafolio
   const managementData = useMemo(() => {
     const counts = {};
     filteredPortfolio.forEach(p => {
@@ -1728,6 +1758,7 @@ export default function App() {
     return data?.portfolio?.find(p => p['Nombre del Proyecto'] === selectedProjectName);
   }, [data, selectedProjectName]);
 
+  // Datos de avance mensual para el gráfico de tendencia
   const projectTrend = useMemo(() => {
     // If no specific project is selected, we show average of projects that match current sidebar/top filters
     const projectsToInclude = selectedProjectName === null
@@ -1838,11 +1869,13 @@ export default function App() {
     }).filter(d => d.plan !== null || d.exec !== null);
   }, [selectedProjectName, sidebarFilters.management, sidebarFilters.dimension, topPortfolio, data?.trend, trendTypeFilter, trendSearch, trendColumnFilters]);
 
+  // Datos filtrados: Demanda Estratégica (2)
   const filteredDemand2 = useMemo(() => {
     // demand2Data is now { projects, schedule } - return schedule for the new dashboard
     return demand2Data?.schedule || [];
   }, [demand2Data]);
 
+  // Datos filtrados: Seguimiento Semanal
   const filteredWeekly = useMemo(() => {
     if (!data?.weekly) return [];
     return data.weekly.filter(item => {
@@ -1928,6 +1961,7 @@ export default function App() {
     });
   }, [data, sidebarFilters.management, sidebarFilters.dimension, topPortfolio, selectedProjectName, weeklyChartFilter, weeklyColumnFilters]);
 
+  // Requerimientos asociados al proyecto seleccionado
   const associatedDemands = useMemo(() => {
     if (!selectedProjectName || !data?.demand) return [];
     return data.demand.filter(d =>
@@ -1937,6 +1971,7 @@ export default function App() {
     );
   }, [data, selectedProjectName]);
 
+  // Datos filtrados: Proyectos Transformación Digital
   const trendStats = useMemo(() => {
     const counts = {};
     const trendData = data?.trend || [];
@@ -2032,6 +2067,7 @@ export default function App() {
     return { total, counts, typeCounts };
   }, [data?.trend, selectedProjectName, trendFilter, trendTypeFilter, sidebarFilters.management, sidebarFilters.dimension, topPortfolio, trendSearch, trendColumnFilters]);
 
+  // Datos de avance agrupados por año
   const trendByYear = useMemo(() => {
     const years = {};
     projectTrend.forEach(pt => {
@@ -2050,10 +2086,12 @@ export default function App() {
   }, [projectTrend]);
 
 
+  // Pantalla: Demanda Estratégica TI
   const renderDemandDashboard = () => {
     const stats = calculateDemandStats(filteredDemand);
 
     if (showStrategicDetail && selectedProjectName) {
+      // Vista detalle de requerimiento seleccionado
       const project = data.demand.find(d => (d['Nombre del Proyecto'] || d['PROYECTO']) === selectedProjectName);
 
       const projectDemands = data.demand.filter(d => (d['Nombre del Proyecto'] || d['PROYECTO']) === selectedProjectName);
@@ -2223,7 +2261,7 @@ export default function App() {
 
     return (
       <div className="space-y-6">
-        {/* Filter indicator for cross-filtering and table filters */}
+        {/* Chips de filtros activos */}
         {(demandFilter || tableSearch || Object.values(tableColumnFilters).some(v => v && v !== 'Todos')) && (
           <div className="flex flex-wrap items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
             <Filter className="w-4 h-4 text-blue-600 shrink-0" />
@@ -2283,7 +2321,7 @@ export default function App() {
           </div>
         )}
 
-        {/* KPIs Row */}
+        {/* Fila de KPIs */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-2">
           <KPICard label="Nº Requerimientos" value={stats.totalDemand} />
           <KPICard label="Nº Proyectos" value={stats.uniqueProjectCount} colorClass="text-corporate-dark" />
@@ -2296,7 +2334,7 @@ export default function App() {
           <KPICard label="Avance Real" value={formatPercent(stats.avgExec)} colorClass="text-blue-900" />
         </div>
 
-        {/* Charts Row 1 */}
+        {/* Fila de gráficos 1 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Categorías por Requerimiento - Pie Chart */}
           <div className="bg-white p-4 border border-gray-200 rounded shadow-sm relative">
@@ -2525,7 +2563,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Charts Row 2 */}
+        {/* Fila de gráficos 2 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Proyectos vs Proyectos-Hijo by Gerencia */}
           <div className="bg-white p-4 border border-gray-200 rounded shadow-sm relative">
@@ -2723,7 +2761,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Table Section */}
+        {/* Sección de tabla de detalle */}
         <div className="bg-white border border-gray-200 rounded shadow-sm overflow-hidden">
           <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div className="flex flex-col gap-1">
@@ -2880,6 +2918,7 @@ export default function App() {
     );
   };
 
+  // Pantalla: Demanda Estratégica (2)
   const renderDemand2Dashboard = () => {
     const indicadorInfo = (ind) => {
       const s = String(ind || '').toLowerCase();
@@ -3069,7 +3108,7 @@ export default function App() {
         </div>
 
         {/* ── KPIs ── */}
-        {/* ── Active filters chip bar ── */}
+        {/* Chips de filtros activos - Demanda Estratégica (2) */}
         {(demand2GerenciaFilter || demand2IndicadorFilter || demand2GestorFilter) && (
           <div className="flex flex-wrap items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
             <Filter className="w-4 h-4 text-blue-600 shrink-0" />
@@ -3103,6 +3142,7 @@ export default function App() {
             </button>
           </div>
         )}
+        {/* KPIs - Demanda Estratégica (2) */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
           {[
             { label: 'Total Proyectos', value: totalProjects, color: '#1e3a5f', bg: '#f8fafc' },
@@ -3121,7 +3161,7 @@ export default function App() {
           ))}
         </div>
 
-        {/* ── Charts ── */}
+        {/* Gráficos - Demanda Estratégica (2) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
             <h3 className="text-[10px] font-bold uppercase text-gray-500 mb-4 tracking-widest flex items-center gap-2">
@@ -3210,7 +3250,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* ── Gantt Cronograma ── */}
+        {/* Sección Gantt - Demanda Estratégica (2) */}
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
             <h3 className="text-[10px] font-bold uppercase text-gray-600 tracking-widest flex items-center gap-2">
@@ -3238,6 +3278,7 @@ export default function App() {
   };
 
 
+  // Pantalla: Portafolio P&D
   const renderPortfolioDashboard = () => {
     const stats = calculatePortfolioStats(filteredPortfolio);
 
@@ -3274,6 +3315,7 @@ export default function App() {
     return (
       <div className="space-y-6">
         {selectedProject ? (
+          // Vista detalle de proyecto P&D seleccionado
           <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500 pb-10">
             <div className="flex items-center justify-between bg-white p-4 border border-gray-200 rounded shadow-sm">
               <div className="flex items-center space-x-4">
@@ -3359,6 +3401,7 @@ export default function App() {
           </div>
         ) : (
           <>
+            {/* Chips de filtros activos - Portafolio */}
             {(portfolioFilter || portfolioSearch || Object.values(portfolioColumnFilters).some(v => v && v !== 'Todos')) && (
               <div className="flex flex-wrap items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded shadow-sm animate-in fade-in slide-in-from-top-2 duration-300 md:col-span-full mb-4">
                 <Filter className="w-4 h-4 text-blue-600 shrink-0" />
@@ -3414,6 +3457,7 @@ export default function App() {
                 </button>
               </div>
             )}
+            {/* KPIs - Portafolio P&D */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <KPICard label="Total Proyectos" value={stats.total} />
               <KPICard label="En Curso" value={stats.enEjecucion} colorClass="text-blue-600" />
@@ -3423,6 +3467,7 @@ export default function App() {
               <KPICard label="Descartado" value={stats.descartado} colorClass="text-red-600" />
             </div>
 
+            {/* Gráficos - Portafolio P&D */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white p-6 border border-gray-200 rounded shadow-sm relative">
                 <div className="absolute top-4 right-4 bg-gray-100 px-2 py-0.5 rounded text-[9px] font-bold text-gray-500">
@@ -3475,6 +3520,7 @@ export default function App() {
               </div>
             </div>
 
+            {/* Tabla - Portafolio P&D */}
             <div className="bg-white border border-gray-200 rounded shadow-sm overflow-hidden">
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex flex-col gap-1">
@@ -3620,10 +3666,11 @@ export default function App() {
     );
   };
 
+  // Pantalla: Proyectos de Transformación Digital
   const renderTrendDashboard = () => {
     return (
       <div className="space-y-6">
-        {/* Top KPIs */}
+        {/* Chips de filtros activos - Transformación Digital */}
         {(selectedProjectName || trendFilter || trendTypeFilter || Object.values(trendColumnFilters).some(v => v && v !== 'Todos')) && (
           <div className="flex flex-wrap items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
             <Filter className="w-4 h-4 text-blue-600 shrink-0" />
@@ -3667,6 +3714,7 @@ export default function App() {
           </div>
         )}
 
+        {/* KPIs - Transformación Digital */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <KPICard label="Total Proyectos Priorizados" value={trendStats.total} icon={<Star className="w-4 h-4" />} />
           {selectedProjectName ? (() => {
@@ -3690,6 +3738,7 @@ export default function App() {
           )}
         </div>
 
+        {/* Gráficos - Transformación Digital */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-white p-6 border border-gray-200 rounded shadow-sm">
             <h3 className="text-xs font-bold uppercase text-gray-500 mb-6 tracking-widest flex items-center">
@@ -3785,6 +3834,7 @@ export default function App() {
           </div>
         </div>
 
+        {/* Tabla - Estado de Proyectos Priorizados */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white border border-gray-200 rounded shadow-sm overflow-hidden">
             <div className="bg-gray-50 px-6 py-3 border-b border-gray-200 flex justify-between items-center">
@@ -3989,6 +4039,7 @@ export default function App() {
     );
   };
 
+  // Pantalla: Seguimiento Semanal
   const renderWeeklyDashboard = () => {
     const hasActiveFilters = (weeklyChartFilter || Object.values(weeklyColumnFilters).some(v => v && v !== 'Todos'));
     const activeFiltersUI = hasActiveFilters ? (
@@ -4065,7 +4116,7 @@ export default function App() {
 
     return (
       <div className="space-y-6 animate-in fade-in ease-out duration-500">
-        {/* Filter indicator */}
+        {/* Chips de filtros activos - Seguimiento Semanal */}
         {activeFiltersUI}
 
         <div className="flex justify-between items-center mb-6">
@@ -4078,7 +4129,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* KPIs */}
+        {/* KPIs - Seguimiento Semanal */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
@@ -4110,7 +4161,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Charts */}
+        {/* Gráficos - Seguimiento Semanal */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
             <h3 className="text-xs font-bold uppercase text-gray-500 mb-6 tracking-widest flex items-center gap-2">
@@ -4192,7 +4243,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Detail Table */}
+        {/* Tabla - Listado General de Seguimiento */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
             <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2 uppercase tracking-wide">
@@ -4331,6 +4382,7 @@ export default function App() {
     );
   }
 
+  // Estructura principal de la aplicación
   return (
     <div className="min-h-screen bg-[#f4f7f9] flex flex-col font-sans text-gray-800 overflow-hidden h-screen relative">
       {loading && (
@@ -4341,7 +4393,7 @@ export default function App() {
           </div>
         </div>
       )}
-      {/* Header */}
+      {/* Encabezado de la aplicación */}
       <header className="bg-[#a5000d] text-white p-4 flex justify-between items-center shadow-md shrink-0">
         <div className="flex items-center space-x-4">
           <div className="bg-white p-2 rounded flex items-center justify-center">
@@ -4371,7 +4423,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* Tab Navigation */}
+      {/* Barra de navegación entre pantallas */}
       <nav className="bg-white border-b border-gray-200 px-6 flex items-center justify-between shadow-sm shrink-0">
         <div className="flex items-center space-x-1">
           {TABS.map((tab) => (
@@ -4418,7 +4470,7 @@ export default function App() {
         </div>
       </nav>
 
-      {/* Filter Bar (Horizontal) */}
+      {/* Barra de filtros horizontal */}
       {!showStrategicDetail && activeTab !== 'weekly' && (
         <div className="bg-white border-b border-gray-100 p-4 flex flex-wrap gap-4 items-center shrink-0 px-10">
           {activeTab === 'demand2' ? (
@@ -4550,7 +4602,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Dashboard Content */}
+      {/* Área de contenido principal — renderiza la pantalla activa */}
       <main className="flex-1 overflow-y-auto p-8 bg-[#f4f7f9] custom-scrollbar">
         <div className={activeTab === 'weekly' ? 'w-full' : 'max-w-[1600px] mx-auto'}>
           {activeTab === 'demand' && renderDemandDashboard()}
@@ -4561,7 +4613,7 @@ export default function App() {
         </div>
       </main>
 
-      {/* Filter Dropdown Menu */}
+      {/* Menú desplegable de filtros por columna */}
       {activeFilterMenu && (
         <div
           className="fixed z-50 bg-white border border-gray-200 rounded shadow-xl min-w-[160px] max-h-[300px] overflow-y-auto animate-in fade-in zoom-in-95 duration-100"
