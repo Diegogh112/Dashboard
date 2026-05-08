@@ -21,6 +21,9 @@ function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
+// safeStr: convierte cualquier valor a string de forma segura
+const safeStr = (v) => (v === null || v === undefined ? '' : String(v));
+
 // formatPercent: formatea un valor como porcentaje
 const formatPercent = (val, decimals = 0) => {
   if (val === undefined || val === null || val === '') return '-';
@@ -116,11 +119,11 @@ const calculateDemandStats = (demandData) => {
   const stats = {
     totalDemand: demandData.length,
     uniqueProjectCount: projectsOnly.length,
-    demandNoIniciado: demandData.filter(d => (d['Estado Proyecto TI'] || '').toLowerCase().includes('01') || (d['Estado Proyecto TI'] || '').toLowerCase().includes('no iniciado')).length,
-    demandEnEjecucion: demandData.filter(d => (d['Estado Proyecto TI'] || '').toLowerCase().includes('02') || (d['Estado Proyecto TI'] || '').toLowerCase().includes('desarrollo') || (d['Estado Proyecto TI'] || '').toLowerCase().includes('ejecución')).length,
-    demandImplementado: demandData.filter(d => (d['Estado Proyecto TI'] || '').toLowerCase().includes('03') || (d['Estado Proyecto TI'] || '').toLowerCase().includes('implementado')).length,
-    demandFinalizado: demandData.filter(d => (d['Estado Proyecto TI'] || '').toLowerCase().includes('04') || (d['Estado Proyecto TI'] || '').toLowerCase().includes('finalizado')).length,
-    demandDescartado: demandData.filter(d => (d['Estado Proyecto TI'] || '').toLowerCase().includes('05') || (d['Estado Proyecto TI'] || '').toLowerCase().includes('descartado')).length,
+    demandNoIniciado: demandData.filter(d => safeStr(d['Estado Proyecto TI']).toLowerCase().includes('01') || safeStr(d['Estado Proyecto TI']).toLowerCase().includes('no iniciado')).length,
+    demandEnEjecucion: demandData.filter(d => safeStr(d['Estado Proyecto TI']).toLowerCase().includes('02') || safeStr(d['Estado Proyecto TI']).toLowerCase().includes('desarrollo') || safeStr(d['Estado Proyecto TI']).toLowerCase().includes('ejecución')).length,
+    demandImplementado: demandData.filter(d => safeStr(d['Estado Proyecto TI']).toLowerCase().includes('03') || safeStr(d['Estado Proyecto TI']).toLowerCase().includes('implementado')).length,
+    demandFinalizado: demandData.filter(d => safeStr(d['Estado Proyecto TI']).toLowerCase().includes('04') || safeStr(d['Estado Proyecto TI']).toLowerCase().includes('finalizado')).length,
+    demandDescartado: demandData.filter(d => safeStr(d['Estado Proyecto TI']).toLowerCase().includes('05') || safeStr(d['Estado Proyecto TI']).toLowerCase().includes('descartado')).length,
     avgPlan: getValidAvg(demandData, '% Avance Planificado'),
     avgExec: getValidAvg(demandData, '% Avance ejecutado'),
   };
@@ -149,11 +152,11 @@ const calculatePortfolioStats = (portfolioData) => {
 
   const stats = {
     total: portfolioData.length,
-    noIniciado: portfolioData.filter(p => (p['Estado TI'] || p['Estado'] || '').toLowerCase().includes('01') || (p['Estado TI'] || p['Estado'] || '').toLowerCase().includes('no iniciado')).length,
-    enEjecucion: portfolioData.filter(p => (p['Estado TI'] || p['Estado'] || '').toLowerCase().includes('02') || (p['Estado TI'] || p['Estado'] || '').toLowerCase().includes('curso') || (p['Estado TI'] || p['Estado'] || '').toLowerCase().includes('ejecución')).length,
-    implementado: portfolioData.filter(p => (p['Estado TI'] || p['Estado'] || '').toLowerCase().includes('03') || (p['Estado TI'] || p['Estado'] || '').toLowerCase().includes('implementado')).length,
-    cerrado: portfolioData.filter(p => (p['Estado TI'] || p['Estado'] || '').toLowerCase().includes('04') || (p['Estado TI'] || p['Estado'] || '').toLowerCase().includes('cerrado') || (p['Estado TI'] || p['Estado'] || '').toLowerCase().includes('finalizado')).length,
-    descartado: portfolioData.filter(p => (p['Estado TI'] || p['Estado'] || '').toLowerCase().includes('05') || (p['Estado TI'] || p['Estado'] || '').toLowerCase().includes('descartado')).length,
+    noIniciado: portfolioData.filter(p => safeStr(p['Estado TI'] || p['Estado']).toLowerCase().includes('01') || safeStr(p['Estado TI'] || p['Estado']).toLowerCase().includes('no iniciado')).length,
+    enEjecucion: portfolioData.filter(p => safeStr(p['Estado TI'] || p['Estado']).toLowerCase().includes('02') || safeStr(p['Estado TI'] || p['Estado']).toLowerCase().includes('curso') || safeStr(p['Estado TI'] || p['Estado']).toLowerCase().includes('ejecución')).length,
+    implementado: portfolioData.filter(p => safeStr(p['Estado TI'] || p['Estado']).toLowerCase().includes('03') || safeStr(p['Estado TI'] || p['Estado']).toLowerCase().includes('implementado')).length,
+    cerrado: portfolioData.filter(p => safeStr(p['Estado TI'] || p['Estado']).toLowerCase().includes('04') || safeStr(p['Estado TI'] || p['Estado']).toLowerCase().includes('cerrado') || safeStr(p['Estado TI'] || p['Estado']).toLowerCase().includes('finalizado')).length,
+    descartado: portfolioData.filter(p => safeStr(p['Estado TI'] || p['Estado']).toLowerCase().includes('05') || safeStr(p['Estado TI'] || p['Estado']).toLowerCase().includes('descartado')).length,
     budget: getSum(portfolioData, 'Presupuesto asignado'),
     avgExec: getValidAvg(portfolioData, '% Avance ejecutado'),
   };
@@ -165,7 +168,7 @@ const getDemandProjectHealth = (project) => {
   if (!project) return { label: "Excelente", color: "text-green-600", bg: "bg-green-500", emoji: "🟢" };
 
   const fechaFin = project['Fecha Fin- Plan'] || project['Fecha Fin'];
-  const estado = project['Estado TI'] || '';
+  const estado = String(project['Estado TI'] || '');
   const planPercent = parseFloat(project['% Avance Planificado']) || 0;
   const execPercent = parseFloat(project['% Avance ejecutado']) || 0;
   const diff = execPercent - planPercent;
@@ -2096,7 +2099,7 @@ export default function App() {
 
       const projectDemands = data.demand.filter(d => (d['Nombre del Proyecto'] || d['PROYECTO']) === selectedProjectName);
       const totalReqs = projectDemands.length;
-      const completedReqs = projectDemands.filter(d => (d['Estado TI'] || '').toLowerCase().includes('04') || (d['Estado TI'] || '').toLowerCase().includes('finalizado')).length;
+      const completedReqs = projectDemands.filter(d => safeStr(d['Estado TI']).toLowerCase().includes('04') || safeStr(d['Estado TI']).toLowerCase().includes('finalizado')).length;
       const progress = totalReqs > 0 ? (completedReqs / totalReqs) * 100 : 0;
 
       const startDate = excelDateToJSDate(project?.['Fecha Inicio- Plan'] || project?.['Fecha Inicio']);
@@ -2213,7 +2216,7 @@ export default function App() {
                           </span>
                           <span className={cn(
                             "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded border",
-                            (req['Estado TI'] || '').toLowerCase().includes('04') ? "bg-green-50 text-green-700 border-green-100" : "bg-gray-100 text-gray-600 border-gray-200"
+                            safeStr(req['Estado TI']).toLowerCase().includes('04') ? "bg-green-50 text-green-700 border-green-100" : "bg-gray-100 text-gray-600 border-gray-200"
                           )}>
                             {req['Estado TI']}
                           </span>
@@ -2891,8 +2894,8 @@ export default function App() {
                           <div className="max-w-fit">
                             <span className={cn(
                               "px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border block truncate",
-                              (d['Estado TI'] || '').toLowerCase().includes('04') || (d['Estado TI'] || '').toLowerCase().includes('finalizado') ? "bg-green-50 text-green-700 border-green-100" :
-                                (d['Estado TI'] || '').toLowerCase().includes('02') || (d['Estado TI'] || '').toLowerCase().includes('desarrollo') ? "bg-blue-50 text-blue-700 border-blue-100" : "bg-gray-50 text-gray-600 border-gray-100"
+                              safeStr(d['Estado TI']).toLowerCase().includes('04') || safeStr(d['Estado TI']).toLowerCase().includes('finalizado') ? "bg-green-50 text-green-700 border-green-100" :
+                                safeStr(d['Estado TI']).toLowerCase().includes('02') || safeStr(d['Estado TI']).toLowerCase().includes('desarrollo') ? "bg-blue-50 text-blue-700 border-blue-100" : "bg-gray-50 text-gray-600 border-gray-100"
                             )} title={d['Estado TI']}>{d['Estado TI']}</span>
                           </div>
                         </td>
@@ -3637,8 +3640,8 @@ export default function App() {
                               <div className="max-w-fit">
                                 <span className={cn(
                                   "px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border block truncate",
-                                  (p['Estado'] || '').toLowerCase().includes('finalizado') || (p['Estado'] || '').toLowerCase().includes('cerrado') ? "bg-green-50 text-green-700 border-green-100" :
-                                    (p['Estado'] || '').toLowerCase().includes('desarrollo') || (p['Estado'] || '').toLowerCase().includes('ejecución') || (p['Estado'] || '').toLowerCase().includes('curso') ? "bg-blue-50 text-blue-700 border-blue-100" : "bg-gray-50 text-gray-600 border-gray-100"
+                                  safeStr(p['Estado']).toLowerCase().includes('finalizado') || safeStr(p['Estado']).toLowerCase().includes('cerrado') ? "bg-green-50 text-green-700 border-green-100" :
+                                    safeStr(p['Estado']).toLowerCase().includes('desarrollo') || safeStr(p['Estado']).toLowerCase().includes('ejecución') || safeStr(p['Estado']).toLowerCase().includes('curso') ? "bg-blue-50 text-blue-700 border-blue-100" : "bg-gray-50 text-gray-600 border-gray-100"
                                 )} title={p['Estado']}>{p['Estado'] || 'Sin Estado'}</span>
                               </div>
                             </td>
@@ -3948,9 +3951,9 @@ export default function App() {
                         <td className="px-6 py-3">
                           <span className={cn(
                             "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border",
-                            (t['Estado'] || '').toLowerCase().includes('curso') ? "bg-blue-50 text-blue-700 border-blue-100" :
-                              (t['Estado'] || '').toLowerCase().includes('espera') ? "bg-amber-50 text-amber-700 border-amber-100" :
-                                (t['Estado'] || '').toLowerCase().includes('final') ? "bg-green-50 text-green-700 border-green-100" :
+                            safeStr(t['Estado']).toLowerCase().includes('curso') ? "bg-blue-50 text-blue-700 border-blue-100" :
+                              safeStr(t['Estado']).toLowerCase().includes('espera') ? "bg-amber-50 text-amber-700 border-amber-100" :
+                                safeStr(t['Estado']).toLowerCase().includes('final') ? "bg-green-50 text-green-700 border-green-100" :
                                   "bg-gray-50 text-gray-600 border-gray-100"
                           )}>
                             {t['Estado'] || 'Priorizado'}
@@ -4083,10 +4086,10 @@ export default function App() {
       );
     }
 
-    const totalPendientes = filteredWeekly.filter(w => (w['Estado'] || '').toLowerCase().includes('pendiente') || (w['Estado'] || '').toLowerCase().includes('proceso')).length;
+    const totalPendientes = filteredWeekly.filter(w => safeStr(w['Estado']).toLowerCase().includes('pendiente') || safeStr(w['Estado']).toLowerCase().includes('proceso')).length;
     const totalProyectos = new Set(filteredWeekly.map(w => w['PROYECTO']).filter(Boolean)).size;
     const totalResponsables = new Set(filteredWeekly.map(w => w['Responsable'] || w['LÍDER TÉCNICO']).filter(Boolean)).size;
-    const cerrados = filteredWeekly.filter(w => (w['Estado'] || '').toLowerCase().includes('cerrado')).length;
+    const cerrados = filteredWeekly.filter(w => safeStr(w['Estado']).toLowerCase().includes('cerrado')).length;
 
     const proyectosData = Array.from(new Set(filteredWeekly.map(w => w['PROYECTO']).filter(Boolean)))
       .map(name => ({
