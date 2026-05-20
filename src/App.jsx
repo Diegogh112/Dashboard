@@ -1,6 +1,7 @@
 ﻿// Importaciones
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
+import { savePortafolioData, saveDemanda2Data, loadPortafolioData, loadDemanda2Data } from './firebase';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, FunnelChart, Funnel, Trapezoid, Treemap
@@ -816,6 +817,29 @@ export default function App() {
     }
   };
 
+  // Carga datos desde Firebase al iniciar la aplicación
+  useEffect(() => {
+    const loadFromFirebase = async () => {
+      try {
+        setLoading(true);
+        const [portafolioData, demanda2Saved] = await Promise.all([
+          loadPortafolioData(),
+          loadDemanda2Data()
+        ]);
+        if (portafolioData) setData(portafolioData);
+        if (demanda2Saved) {
+          setDemand2Data(demanda2Saved);
+          setActiveTab('demand');
+        }
+      } catch (err) {
+        console.error('Error cargando datos de Firebase:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadFromFirebase();
+  }, []);
+
   useEffect(() => {
     const handleClickOutside = () => setActiveFilterMenu(null);
     if (activeFilterMenu) {
@@ -1034,6 +1058,8 @@ export default function App() {
         };
 
         setData(sheets);
+        // Guarda en Firebase para que todos los usuarios vean los datos actualizados
+        savePortafolioData(sheets).catch(err => console.error('Error guardando en Firebase:', err));
         setSelectedProjectName(null);
         setTopPortfolio('Todas');
       } catch (err) {
@@ -1472,6 +1498,8 @@ export default function App() {
         }
 
         setDemand2Data({ schedule, ganttCols });
+        // Guarda en Firebase para que todos los usuarios vean los datos actualizados
+        saveDemanda2Data({ schedule, ganttCols }).catch(err => console.error('Error guardando en Firebase:', err));
         setLoading(false);
         setActiveTab('demand2');
       } catch (err) {
@@ -2360,7 +2388,7 @@ export default function App() {
                       });
                       return Object.entries(counts).map(([name, value]) => ({ name, value }));
                     })()}
-                    outerRadius={80}
+                    outerRadius={70}
                     innerRadius={0}
                     dataKey="value"
                     labelLine={true}
@@ -4364,27 +4392,6 @@ export default function App() {
     );
   };
 
-  if (!data) {
-    return (
-      <div className="min-h-screen bg-[#f4f7f9] flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-2xl border border-gray-100 text-center">
-          <div className="bg-corporate-dark/5 p-4 rounded-full inline-block mb-4">
-            <Briefcase className="w-12 h-12 text-corporate-dark" />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Dashboard de Portafolio</h1>
-          <p className="text-gray-500 text-sm mb-6">Cargue el Portafolio de Demanda Estratégica para iniciar la visualización.</p>
-          <input
-            type="file"
-            accept=".xlsx, .xls"
-            onChange={handleFileUpload}
-            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-corporate-dark file:text-white hover:file:bg-corporate-light cursor-pointer"
-          />
-          {loading && <p className="mt-4 text-corporate-dark animate-pulse">Cargando...</p>}
-        </div>
-      </div>
-    );
-  }
-
   // Estructura principal de la aplicación
   return (
     <div className="min-h-screen bg-[#f4f7f9] flex flex-col font-sans text-gray-800 overflow-hidden h-screen relative">
@@ -4392,7 +4399,7 @@ export default function App() {
         <div className="absolute inset-0 bg-white/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
           <div className="bg-white p-6 rounded-lg shadow-xl border border-gray-100 flex flex-col items-center">
             <Activity className="w-12 h-12 text-corporate-dark animate-spin mb-4" />
-            <p className="text-corporate-dark font-bold animate-pulse">Procesando información...</p>
+            <p className="text-corporate-dark font-bold animate-pulse">Cargando datos...</p>
           </div>
         </div>
       )}
@@ -4414,12 +4421,12 @@ export default function App() {
           <div className="flex gap-2">
             <label className="bg-white text-[#a5000d] hover:bg-gray-100 px-4 py-2 rounded font-bold text-xs flex items-center gap-2 cursor-pointer transition-colors shadow-lg">
               <Upload className="w-4 h-4" />
-              <span>SUBIR PORTAFOLIO DEMANDA ESTRATÉGICA </span>
+              <span>NUEVO PORTAFOLIO DEMANDA ESTRATÉGICA </span>
               <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} className="hidden" />
             </label>
             <label className="bg-[#a5000d] border border-white hover:bg-white hover:text-white px-4 py-2 rounded font-bold text-xs flex items-center gap-2 cursor-pointer transition-colors shadow-lg">
               <Upload className="w-4 h-4" />
-              <span>SUBIR PORTAFOLIO DE DEMANDA TÁCTICA</span>
+              <span>NUEVO PORTAFOLIO DE DEMANDA TÁCTICA</span>
               <input type="file" accept=".xlsx, .xls, .xlsm" onChange={handleDemand2Upload} className="hidden" />
             </label>
           </div>
@@ -4608,10 +4615,17 @@ export default function App() {
       {/* Área de contenido principal — renderiza la pantalla activa */}
       <main className="flex-1 overflow-y-auto p-8 bg-[#f4f7f9] custom-scrollbar">
         <div className={activeTab === 'weekly' ? 'w-full' : 'max-w-[1600px] mx-auto'}>
-          {activeTab === 'demand' && renderDemandDashboard()}
-          {activeTab === 'portfolio' && renderPortfolioDashboard()}
-          {activeTab === 'trend' && renderTrendDashboard()}
-          {activeTab === 'weekly' && renderWeeklyDashboard()}
+          {!data && !loading && (
+            <div className="flex flex-col items-center justify-center mt-32 text-center">
+              <FolderOpen className="w-16 h-16 text-gray-200 mb-4" />
+              <p className="text-gray-400 text-lg font-medium">No hay datos cargados.</p>
+              <p className="text-gray-300 text-sm mt-1">Sube un archivo usando el botón "SUBIR PORTAFOLIO DEMANDA ESTRATÉGICA".</p>
+            </div>
+          )}
+          {data && activeTab === 'demand' && renderDemandDashboard()}
+          {data && activeTab === 'portfolio' && renderPortfolioDashboard()}
+          {data && activeTab === 'trend' && renderTrendDashboard()}
+          {data && activeTab === 'weekly' && renderWeeklyDashboard()}
           {activeTab === 'demand2' && renderDemand2Dashboard()}
         </div>
       </main>
